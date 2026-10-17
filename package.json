@@ -5,6 +5,9 @@
   "description": "Render Grafana dashboard JSON (and input forms in the same format) natively in React Native.",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "bin": {
+    "dashkit": "tools/dashboards.js"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
