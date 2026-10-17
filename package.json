@@ -1,0 +1,25 @@
+{
+  "name": "@spaghetti/dashkit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Render Grafana dashboard JSON (and input forms in the same format) natively in React Native.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-svg": "*"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.0",
+    "typescript": "~6.0.3",
+    "@types/react": "~19.2.2",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-svg": "15.15.4"
+  }
+}
