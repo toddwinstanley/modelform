@@ -75,7 +75,9 @@ export class GrafanaClient {
     if (!res.ok) {
       let message = `${res.status} ${res.statusText}`;
       try {
-        message = JSON.parse(body).message ?? message;
+        const parsed = JSON.parse(body);
+        // /api/ds/query reports failed queries per refId rather than in `message`.
+        message = parsed.message ?? (queryErrors(parsed.results) || message);
       } catch {}
       throw new GrafanaError(message, res.status);
     }
@@ -138,8 +140,8 @@ export class GrafanaClient {
         body: JSON.stringify({ queries, from: String(request.range.from), to: String(request.range.to) }),
       },
     );
-    const errors = Object.entries(res.results ?? {}).filter(([, r]) => r.error);
-    if (errors.length) throw new GrafanaError(errors.map(([refId, r]) => `${refId}: ${r.error}`).join('\n'));
+    const errors = queryErrors(res.results);
+    if (errors) throw new GrafanaError(errors);
     return Object.values(res.results ?? {}).flatMap((r) => (r.frames ?? []).map(fromWire));
   }
 }
@@ -171,3 +173,10 @@ export function fromWire(frame: WireFrame): DataFrame {
 }
 
 const isPlaceholder = (uid: string) => uid.startsWith('$');
+
+function queryErrors(results: Record<string, { error?: string }> | undefined): string {
+  return Object.entries(results ?? {})
+    .filter(([, r]) => r.error)
+    .map(([refId, r]) => `${refId}: ${r.error}`)
+    .join('\n');
+}
