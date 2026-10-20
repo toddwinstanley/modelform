@@ -52,7 +52,7 @@ export async function queryPanel(panel: Panel, ctx: PanelQueryContext, signal?: 
   const maxDataPoints = (panel.maxDataPoints as number | undefined) ?? Math.max(100, Math.round(ctx.widthPx));
   const minInterval = typeof panel.interval === 'string' && panel.interval ? safeDuration(panel.interval) : undefined;
   const intervalMs = calculateInterval(ctx.range, maxDataPoints, minInterval);
-  const interp = { values: ctx.variables, info: ctx.variableInfo, range: ctx.range, intervalMs };
+  const interp = { values: ctx.variables, info: ctx.variableInfo, scoped: panel.scopedVars, range: ctx.range, intervalMs };
 
   const panelRef = normalizeRef(panel.datasource);
   const groups = new Map<DataSource, QueryRequest['targets']>();

@@ -92,6 +92,13 @@ export interface Panel {
   collapsed?: boolean;
   /** Rows only: children of a collapsed row live here instead of at the top level. */
   panels?: Panel[];
+  /** Repeat this row (or panel) once per selected value of the named variable. */
+  repeat?: string;
+  /** Panel repeats: side by side (`h`, wrapping at maxPerRow) or stacked (`v`). */
+  repeatDirection?: 'h' | 'v';
+  maxPerRow?: number;
+  /** Set on each copy of a repeated row or panel: the single value it was repeated for. */
+  scopedVars?: Record<string, { text: string; value: string }>;
   mobile?: MobileOptions;
   [key: string]: unknown;
 }

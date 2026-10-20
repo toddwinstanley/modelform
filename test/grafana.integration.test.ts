@@ -4,14 +4,15 @@
  *   GRAFANA_URL=https://g-xxx.grafana-workspace.us-east-1.amazonaws.com GRAFANA_TOKEN=glsa_… pnpm test
  *
  * Queries every panel of every dashboard the token can see, the same way the app does:
- * query variables are resolved first, then each panel runs with the resulting selections.
+ * query variables are resolved first, then each panel (and each copy of a repeated one) runs
+ * with the resulting selections.
  */
 import { describe, expect, it } from 'vitest';
 import {
   GrafanaClient,
   GrafanaDataSource,
   initialVariableValues,
-  isRow,
+  layoutDashboard,
   parseRange,
   queryPanel,
   refreshedVariables,
@@ -19,7 +20,6 @@ import {
   toSeries,
   variableDependents,
   variableInfo,
-  type Panel,
 } from '../src/core';
 
 const url = process.env.GRAFANA_URL;
@@ -53,7 +53,9 @@ describe.skipIf(!url || !token)('grafana integration', () => {
       });
       for (const [name, error] of Object.entries(vars.errors)) failures.push(`${dashboard.title} / $${name}: ${error}`);
       const info = variableInfo(dashboard, vars.options);
-      const panels = dashboard.panels.flatMap((p): Panel[] => (isRow(p) ? (p.panels ?? []) : [p]));
+      // Laid out as the app does, so repeated rows and panels are queried once per copy.
+      const sections = layoutDashboard(dashboard, 'grid', { values: vars.values, info });
+      const panels = sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map((c) => c.panel)));
       for (const panel of panels) {
         if (!panel.targets?.length) continue;
         try {

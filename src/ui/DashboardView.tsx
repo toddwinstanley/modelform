@@ -1,5 +1,17 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { isInputPanel } from '../core/inputs';
 import { gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode } from '../core/layout';
 import { panelHasQueries } from '../core/datasource';
@@ -28,15 +40,19 @@ export interface DashboardViewProps {
 /** Renders the dashboard from the nearest <DashboardProvider>. */
 export function DashboardView({ mode = 'auto', header, footer, refreshable }: DashboardViewProps) {
   const theme = useDashTheme();
-  const { dashboard, refresh } = useDashboard();
+  const { dashboard, refresh, variables, variableInfo } = useDashboard();
   // Prefer the measured container width (correct in split view and embedded screens);
   // the window width covers the first frame before layout has run.
   const [measured, onLayout] = useLayout();
   const window = useWindowDimensions();
   const width = measured.width || window.width;
   const layoutMode: LayoutMode = mode === 'auto' ? (width >= TABLET_WIDTH ? 'grid' : 'phone') : mode;
-  const sections = useMemo(() => layoutDashboard(dashboard, layoutMode), [dashboard, layoutMode]);
+  const sections = useMemo(
+    () => layoutDashboard(dashboard, layoutMode, { values: variables, info: variableInfo }),
+    [dashboard, layoutMode, variables, variableInfo],
+  );
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const { seen, onScroll, onSectionLayout } = useSeenSections(window.height);
   const contentW = width - SIDE * 2;
   const canRefresh = refreshable ?? dashboard.panels.some((p) => panelHasQueries(p) || p.panels?.some(panelHasQueries));
 
@@ -44,6 +60,8 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
     <View style={[styles.fill, { backgroundColor: theme.background }]} onLayout={onLayout}>
       {width > 0 && (
         <ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={100}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           refreshControl={canRefresh ? <RefreshControl refreshing={false} onRefresh={refresh} /> : undefined}
@@ -52,7 +70,7 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
           {sections.map((section) => {
             const collapsed = toggled[section.key] ?? section.collapsed;
             return (
-              <View key={section.key} style={styles.section}>
+              <View key={section.key} style={styles.section} onLayout={(e) => onSectionLayout(section.key, e)}>
                 {section.row && (
                   <Pressable
                     onPress={() => setToggled((t) => ({ ...t, [section.key]: !collapsed }))}
@@ -61,7 +79,9 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
                     accessibilityState={{ expanded: !collapsed }}
                   >
                     <Text style={[styles.chevron, { color: theme.textMuted }]}>{collapsed ? '▸' : '▾'}</Text>
-                    <Text style={[styles.rowTitle, { color: theme.text }]}>{section.row.title}</Text>
+                    <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={2}>
+                      {interpolate(section.row.title ?? '', { values: variables, info: variableInfo, scoped: section.row.scopedVars })}
+                    </Text>
                   </Pressable>
                 )}
                 {!collapsed &&
@@ -69,7 +89,9 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
                     <View key={ri} style={styles.row}>
                       {row.cells.map((cell) => {
                         const w = (contentW + GAP) * (cell.span / GRID_COLUMNS) - GAP;
-                        return <PanelCard key={cell.panel.id ?? cell.panel.title} panel={cell.panel} width={w} height={gridUnitsToPx(row.h)} />;
+                        return (
+                          <PanelCard key={cell.key} panel={cell.panel} width={w} height={gridUnitsToPx(row.h)} deferred={!seen.has(section.key)} />
+                        );
                       })}
                     </View>
                   ))}
@@ -83,12 +105,53 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
   );
 }
 
-export function PanelCard({ panel, width, height }: { panel: Panel; width: number; height: number }) {
+/**
+ * Tracks which sections have come within a screen of the viewport. Their panels query from then
+ * on; the rest render as empty cards, so a dashboard with dozens of repeated rows doesn't send
+ * every query at once.
+ */
+function useSeenSections(viewportHeight: number) {
+  const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
+  const view = useRef({ y: 0, h: viewportHeight });
+  const positions = useRef(new Map<string, { y: number; h: number }>());
+
+  const reveal = useCallback(() => {
+    const { y, h } = view.current;
+    setSeen((prev) => {
+      let next: Set<string> | null = null;
+      for (const [key, p] of positions.current) {
+        if (!prev.has(key) && p.y < y + 2 * h && p.y + p.h > y - h) (next ??= new Set(prev)).add(key);
+      }
+      return next ?? prev;
+    });
+  }, []);
+
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      view.current = { y: e.nativeEvent.contentOffset.y, h: e.nativeEvent.layoutMeasurement.height };
+      reveal();
+    },
+    [reveal],
+  );
+
+  const onSectionLayout = useCallback(
+    (key: string, e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      positions.current.set(key, { y, h: height });
+      reveal();
+    },
+    [reveal],
+  );
+
+  return { seen, onScroll, onSectionLayout };
+}
+
+export function PanelCard({ panel, width, height, deferred }: { panel: Panel; width: number; height: number; deferred?: boolean }) {
   const theme = useDashTheme();
   const { variables, variableInfo } = useDashboard();
   const input = isInputPanel(panel);
   const hasTitle = !!panel.title;
-  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo }) : '';
+  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo, scoped: panel.scopedVars }) : '';
   return (
     <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
       {hasTitle && (
@@ -97,7 +160,11 @@ export function PanelCard({ panel, width, height }: { panel: Panel; width: numbe
         </Text>
       )}
       <View style={styles.body}>
-        {input ? <InputPanelBody panel={panel} /> : <DataPanelBody panel={panel} width={width - 24} height={height - (hasTitle ? TITLE_H : 0) - 16} />}
+        {deferred && !input ? null : input ? (
+          <InputPanelBody panel={panel} />
+        ) : (
+          <DataPanelBody panel={panel} width={width - 24} height={height - (hasTitle ? TITLE_H : 0) - 16} />
+        )}
       </View>
     </View>
   );

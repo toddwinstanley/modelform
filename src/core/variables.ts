@@ -28,6 +28,9 @@ export interface VariableInfo {
 
 export const ALL = '$__all';
 
+/** Per-variable single values, as Grafana gives each copy of a repeated row or panel. */
+export type ScopedVars = Record<string, VarOption>;
+
 export function initialVariableValues(dashboard: Dashboard): VariableValues {
   const values: VariableValues = {};
   for (const v of dashboard.templating?.list ?? []) {
@@ -173,6 +176,8 @@ interface InterpolateContext {
   info?: Record<string, VariableInfo>;
   /** Datasource type of the query being interpolated; picks the default multi-value format. */
   datasourceType?: string;
+  /** Single values that override `values` inside a repeated row or panel. */
+  scoped?: ScopedVars;
   range?: TimeRange;
   intervalMs?: number;
 }
@@ -188,6 +193,11 @@ export function interpolate(text: string, ctx: InterpolateContext): string {
     (match, plain: string, braced: string, bracedFmt: string, old: string, oldFmt: string) => {
       const name = plain ?? braced ?? old;
       const format = bracedFmt ?? oldFmt;
+      const scoped = ctx.scoped?.[name];
+      if (scoped) {
+        const info = { ...ctx.info?.[name], options: [scoped] };
+        return formatVariable(scoped.value, format, info, ctx.datasourceType);
+      }
       if (name in ctx.values) return formatVariable(ctx.values[name], format, ctx.info?.[name], ctx.datasourceType);
       return builtins[name] ?? match;
     },
@@ -238,7 +248,14 @@ function formatVariable(value: string | string[], format: string | undefined, in
     // match-nothing list for SQL rather than `in ()`.
     else return sql ? 'NULL' : '.*';
   }
-  if (!format && sql && (info?.multi || info?.includeAll)) format = 'sqlstring';
+  if (!format && sql) {
+    // As Grafana's SQL plugins do: lists (including an expanded All) are quoted. Postgres
+    // inserts a single value as-is with ' doubled, which is how a repeat's value arrives;
+    // MySQL and MSSQL quote a single value too if the variable is multi-value or has All.
+    const list = Array.isArray(value) || isAll;
+    if (list || (!/postgres/.test(dsType!) && (info?.multi || info?.includeAll))) format = 'sqlstring';
+    else return arr[0].replace(/'/g, "''");
+  }
 
   switch (format) {
     case 'csv':
