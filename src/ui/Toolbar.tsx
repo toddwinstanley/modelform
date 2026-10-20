@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TIME_PRESETS } from '../core/time';
-import { variableOptions, visibleVariables } from '../core/variables';
+import { ALL, valueText, visibleVariables } from '../core/variables';
 import { useDashboard } from './context';
 import { useDashTheme } from './theme';
 
@@ -28,14 +28,11 @@ export function Chip({ label, selected, onPress }: { label: string; selected?: b
 /** Time range presets and template variable pickers, laid out in one row above the panels. */
 export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof TIME_PRESETS }) {
   const theme = useDashTheme();
-  const { dashboard, rawRange, setRawRange, variables, setVariable } = useDashboard();
+  const { dashboard, rawRange, setRawRange, variables, variableInfo, variableErrors, variablesReady, setVariable } = useDashboard();
   const [open, setOpen] = useState<string | null>(null);
   const vars = visibleVariables(dashboard);
   const openVar = vars.find((v) => v.name === open);
-  const label = (name: string) => {
-    const v = variables[name];
-    return Array.isArray(v) ? (v.length > 1 ? `${v.length} selected` : v[0] ?? '') : v ?? '';
-  };
+  const label = (name: string) => valueText(variables[name], variableInfo[name]) || (variablesReady ? 'None' : '…');
 
   return (
     <View style={styles.toolbar}>
@@ -49,7 +46,7 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
           {vars.map((v) => (
             <Chip
               key={v.name}
-              label={`${v.label ?? v.name}: ${label(v.name) === '$__all' ? 'All' : label(v.name)}`}
+              label={`${v.label ?? v.name}: ${label(v.name)}${variableErrors[v.name] ? ' ⚠' : ''}`}
               selected={open === v.name}
               onPress={() => setOpen(open === v.name ? null : v.name)}
             />
@@ -58,7 +55,7 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
       )}
       {openVar && (
         <View style={[styles.options, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          {[...(openVar.includeAll ? [{ text: 'All', value: '$__all' }] : []), ...variableOptions(openVar)].map((o) => {
+          {[...(openVar.includeAll ? [{ text: 'All', value: ALL }] : []), ...(variableInfo[openVar.name]?.options ?? [])].map((o) => {
             const current = variables[openVar.name];
             const selected = Array.isArray(current) ? current.includes(o.value) : current === o.value;
             return (
@@ -67,10 +64,10 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
                 label={o.text}
                 selected={selected}
                 onPress={() => {
-                  if (openVar.multi && o.value !== '$__all') {
-                    const cur = (Array.isArray(current) ? current : [current]).filter((c) => c && c !== '$__all');
+                  if (openVar.multi && o.value !== ALL) {
+                    const cur = (Array.isArray(current) ? current : [current]).filter((c) => c && c !== ALL);
                     const next = selected ? cur.filter((c) => c !== o.value) : [...cur, o.value];
-                    setVariable(openVar.name, next.length ? next : ['$__all']);
+                    setVariable(openVar.name, next.length ? next : [ALL]);
                   } else {
                     setVariable(openVar.name, openVar.multi ? [o.value] : o.value);
                     setOpen(null);
@@ -79,8 +76,10 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
               />
             );
           })}
-          {openVar.type === 'query' && (
-            <Text style={[styles.hint, { color: theme.textMuted }]}>Query variables show the options saved in the dashboard JSON.</Text>
+          {variableErrors[openVar.name] && (
+            <Text style={[styles.hint, { color: theme.danger }]}>
+              Couldn't load options: {variableErrors[openVar.name]}
+            </Text>
           )}
         </View>
       )}

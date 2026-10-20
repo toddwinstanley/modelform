@@ -3,6 +3,7 @@ export * from './frame';
 export * from './time';
 export * from './layout';
 export * from './variables';
+export * from './resolveVariables';
 export * from './reduce';
 export * from './format';
 export * from './fieldconfig';

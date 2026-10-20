@@ -113,4 +113,12 @@ export interface TemplateVariable {
   multi?: boolean;
   includeAll?: boolean;
   allValue?: string | null;
+  /** Query variables: where the options come from. */
+  datasource?: DataSourceRef | string | null;
+  /** Query variables: 0/missing = never, 1 = on dashboard load, 2 = on time range change. */
+  refresh?: number;
+  /** Query variables: `/pattern/flags` applied to each option's text. */
+  regex?: string;
+  /** Query variables: 0 = query order, 1/2 = alpha, 3/4 = numeric, 5/6 = alpha ignoring case, 7/8 = natural. Odd ascending. */
+  sort?: number;
 }

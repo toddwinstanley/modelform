@@ -1,6 +1,7 @@
-import type { DataSource, QueryRequest } from './datasource';
+import type { DataSource, QueryRequest, VariableQueryRequest } from './datasource';
 import type { DataFrame, FieldType } from './frame';
 import type { Dashboard, DataSourceRef } from './schema';
+import { framesToOptions, isSqlDatasource, type VarOption } from './variables';
 
 /**
  * Talks to a Grafana instance's HTTP API with a service-account token.
@@ -114,12 +115,16 @@ export class GrafanaClient {
       throw e;
     }
     const all = Object.values(settings.datasources);
+    const sameType = (type: string) => type === ref?.type || TYPE_ALIASES[type] === ref?.type || TYPE_ALIASES[ref?.type ?? ''] === type;
     const found =
       (ref?.uid && !isPlaceholder(ref.uid) && all.find((d) => d.uid === ref.uid || d.name === ref.uid)) ||
-      (ref?.type && all.find((d) => d.type === ref.type && d.isDefault)) ||
-      (ref?.type && all.find((d) => d.type === ref.type)) ||
-      settings.datasources[settings.defaultDatasource];
-    if (!found) throw new GrafanaError(`No datasource matches ${JSON.stringify(ref)}`);
+      (ref?.type && all.find((d) => sameType(d.type) && d.isDefault)) ||
+      (ref?.type && all.find((d) => sameType(d.type))) ||
+      // A ref that names a type this Grafana doesn't have must not run against some other datasource.
+      (ref?.type ? undefined : settings.datasources[settings.defaultDatasource]);
+    if (!found) {
+      throw new GrafanaError(ref?.type ? `No ${ref.type} datasource in this Grafana` : `No datasource matches ${JSON.stringify(ref)}`);
+    }
     return { uid: found.uid, type: found.type };
   }
 
@@ -152,6 +157,30 @@ export class GrafanaDataSource implements DataSource {
   query(request: QueryRequest, signal?: AbortSignal) {
     return this.client.query(request, signal);
   }
+
+  /**
+   * SQL variable queries run through /api/ds/query like any panel query. Other datasources
+   * (Prometheus label_values() and the like) evaluate variable queries in Grafana's frontend,
+   * which this can't reproduce, so those return null.
+   */
+  async variableOptions({ query, datasource, range }: VariableQueryRequest, signal?: AbortSignal): Promise<VarOption[] | null> {
+    const ref = await this.client.resolveRef(datasource);
+    if (!isSqlDatasource(ref.type)) return null;
+    // Saved either as the SQL string or, by newer editors, as an object with rawSql (or query).
+    const obj = typeof query === 'string' ? { rawSql: query } : { ...(query as Record<string, unknown>) };
+    const q = { ...obj, rawSql: obj.rawSql ?? obj.query };
+    if (typeof q.rawSql !== 'string' || !q.rawSql.trim()) return null;
+    const frames = await this.client.query(
+      {
+        targets: [{ refId: 'variable', rawQuery: true, format: 'table', ...q, datasource: ref }],
+        range,
+        intervalMs: 60_000,
+        maxDataPoints: 1000,
+      },
+      signal,
+    );
+    return framesToOptions(frames);
+  }
 }
 
 const FIELD_TYPES: FieldType[] = ['time', 'number', 'string', 'boolean'];
@@ -173,6 +202,12 @@ export function fromWire(frame: WireFrame): DataFrame {
 }
 
 const isPlaceholder = (uid: string) => uid.startsWith('$');
+
+/** Plugin ids Grafana renamed, current → old, so dashboards saved with either name still match. */
+const TYPE_ALIASES: Record<string, string> = {
+  'grafana-postgresql-datasource': 'postgres',
+  'grafana-testdata-datasource': 'testdata',
+};
 
 function queryErrors(results: Record<string, { error?: string }> | undefined): string {
   return Object.entries(results ?? {})

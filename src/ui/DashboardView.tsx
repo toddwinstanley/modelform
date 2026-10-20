@@ -85,10 +85,10 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
 
 export function PanelCard({ panel, width, height }: { panel: Panel; width: number; height: number }) {
   const theme = useDashTheme();
-  const { variables } = useDashboard();
+  const { variables, variableInfo } = useDashboard();
   const input = isInputPanel(panel);
   const hasTitle = !!panel.title;
-  const title = hasTitle ? interpolate(panel.title!, { values: variables }) : '';
+  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo }) : '';
   return (
     <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
       {hasTitle && (
