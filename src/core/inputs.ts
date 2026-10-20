@@ -16,7 +16,8 @@ export type InputType =
   | 'input-toggle'
   | 'input-rating'
   | 'input-text'
-  | 'input-counter';
+  | 'input-counter'
+  | 'input-duration';
 
 export interface InputChoice {
   label: string;
@@ -31,6 +32,11 @@ export interface InputOptions {
   max?: number;
   step?: number;
   placeholder?: string;
+  /**
+   * input-slider only: text spaced evenly along the track, first at min and last at max,
+   * e.g. ["Understeer", "Neutral", "Oversteer"]. Replaces the numeric min/max labels.
+   */
+  labels?: string[];
   /** Initial value: a literal, or "last" to start from the most recent entry. */
   default?: number | string | boolean | 'last';
   /** input-select only. */
@@ -48,6 +54,30 @@ export const isInputPanel = (p: Panel): p is InputPanel => p.type.startsWith('in
 export function inputPanels(dashboard: Dashboard): InputPanel[] {
   const all = dashboard.panels.flatMap((p) => (p.type === 'row' ? [p, ...(p.panels ?? [])] : [p]));
   return all.filter(isInputPanel);
+}
+
+/**
+ * input-duration: lap-timer style MM:SS.hh. Digits fill from the right as they're typed,
+ * so "13245" reads 01:32.45, which is recorded as 92.45 seconds.
+ */
+export function parseClockDigits(digits: string): number | null {
+  const d = digits.replace(/\D/g, '').slice(-6);
+  if (!d) return null;
+  const p = d.padStart(6, '0');
+  const m = Number(p.slice(0, 2));
+  const s = Number(p.slice(2, 4));
+  const h = Number(p.slice(4, 6));
+  if (s > 59) return null;
+  return Math.round((m * 60 + s + h / 100) * 100) / 100;
+}
+
+/** Seconds → MM:SS.hh (minutes widen past 99). */
+export function formatClock(seconds: number): string {
+  const total = Math.round(seconds * 100);
+  const m = Math.floor(total / 6000);
+  const s = Math.floor((total % 6000) / 100);
+  const h = total % 100;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(h).padStart(2, '0')}`;
 }
 
 /** A form value as held by the UI before saving. */

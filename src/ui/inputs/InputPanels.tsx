@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import type { InputPanel, InputValue } from '../../core/inputs';
+import { formatClock, parseClockDigits, type InputPanel, type InputValue } from '../../core/inputs';
 import { startOf } from '../../core/time';
 import { Chip } from '../Toolbar';
 import { useDashTheme } from '../theme';
@@ -32,10 +32,14 @@ export function InputPanelBody({ panel }: { panel: InputPanel }) {
       return <FreeTextInput {...props} />;
     case 'input-counter':
       return <CounterInput panel={panel} />;
+    case 'input-duration':
+      return <DurationInput {...props} />;
     default:
       return null;
   }
 }
+
+const COMPACT_NUMBER_WIDTH = 260;
 
 const decimalsOf = (step: number) => (String(step).split('.')[1] ?? '').length;
 
@@ -43,6 +47,9 @@ function NumberInput({ panel, value, onChange }: InputProps) {
   const theme = useDashTheme();
   const { step = 1, min, max, unit, placeholder } = panel.options;
   const [text, setText] = useState(value == null ? '' : String(value));
+  // Half-width cards on a phone (~155pt) leave no room for the value at full size.
+  const [size, onLayout] = useLayout();
+  const compact = size.width > 0 && size.width < COMPACT_NUMBER_WIDTH;
   // Sync from outside changes (stepper, defaults, reset) without clobbering partial input like "72."
   useEffect(() => {
     setText((t) => (value == null ? '' : Number(t.replace(',', '.')) === value && t.trim() ? t : String(value)));
@@ -55,9 +62,9 @@ function NumberInput({ panel, value, onChange }: InputProps) {
   };
 
   return (
-    <View style={styles.numberRow}>
-      <StepButton label="−" onPress={() => bump(-1)} />
-      <View style={[styles.numberField, { borderColor: theme.border }]}>
+    <View style={[styles.numberRow, compact && styles.numberRowCompact]} onLayout={onLayout}>
+      <StepButton label="−" onPress={() => bump(-1)} compact={compact} />
+      <View style={[styles.numberField, compact && styles.numberFieldCompact, { borderColor: theme.border }]}>
         <TextInput
           value={text}
           onChangeText={(t) => {
@@ -69,24 +76,68 @@ function NumberInput({ panel, value, onChange }: InputProps) {
           keyboardType="decimal-pad"
           placeholder={placeholder ?? '—'}
           placeholderTextColor={theme.textMuted}
-          style={[styles.numberText, { color: theme.text }]}
+          style={[styles.numberText, compact && styles.numberTextCompact, { color: theme.text }]}
+          accessibilityLabel={unit ? `${panel.title} (${unit})` : panel.title}
           selectTextOnFocus
         />
-        {unit ? <Text style={[styles.unit, { color: theme.textMuted }]}>{unit}</Text> : null}
+        {/* Too narrow for the unit and the value; put the unit in the panel title instead. */}
+        {unit && !compact ? <Text style={[styles.unit, { color: theme.textMuted }]}>{unit}</Text> : null}
       </View>
-      <StepButton label="+" onPress={() => bump(1)} />
+      <StepButton label="+" onPress={() => bump(1)} compact={compact} />
     </View>
   );
 }
 
-function StepButton({ label, onPress }: { label: string; onPress(): void }) {
+/** MM:SS.hh typed as digits only, so the number pad works on every platform. */
+function DurationInput({ panel, value, onChange }: InputProps) {
+  const theme = useDashTheme();
+  const toDigits = (v: InputValue) => (typeof v === 'number' ? formatClock(v).replace(/\D/g, '').replace(/^0+/, '') : '');
+  const [digits, setDigits] = useState(toDigits(value));
+  // Sync from outside changes (defaults, reset) without clobbering what's being typed.
+  useEffect(() => {
+    setDigits((d) => (value == null ? (parseClockDigits(d) == null ? d : '') : parseClockDigits(d) === value ? d : toDigits(value)));
+  }, [value]);
+
+  const masked = digits ? maskClock(digits) : '';
+  const invalid = !!digits && parseClockDigits(digits) == null;
+
+  return (
+    <View style={[styles.numberField, { borderColor: invalid ? theme.danger : theme.border }]}>
+      <TextInput
+        value={masked}
+        onChangeText={(t) => {
+          const d = t.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
+          setDigits(d);
+          onChange(parseClockDigits(d));
+        }}
+        keyboardType="number-pad"
+        placeholder={panel.options.placeholder ?? '00:00.00'}
+        placeholderTextColor={theme.textMuted}
+        style={[styles.numberText, { color: invalid ? theme.danger : theme.text }]}
+        accessibilityLabel={panel.title}
+        accessibilityHint="Type the digits only, for example 13245 for 1 minute 32.45 seconds"
+        // Digits fill from the right, so keep the caret at the end; otherwise reformatting
+        // can leave the text selected and the next backspace clears everything.
+        selection={{ start: masked.length, end: masked.length }}
+      />
+    </View>
+  );
+}
+
+/** "13245" → "01:32.45"; always shows the full mask so the field doesn't jump around. */
+function maskClock(digits: string): string {
+  const p = digits.slice(-6).padStart(6, '0');
+  return `${p.slice(0, 2)}:${p.slice(2, 4)}.${p.slice(4, 6)}`;
+}
+
+function StepButton({ label, onPress, compact }: { label: string; onPress(): void; compact?: boolean }) {
   const theme = useDashTheme();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label === '+' ? 'Increase' : 'Decrease'}
-      style={({ pressed }) => [styles.stepBtn, { borderColor: theme.border, backgroundColor: pressed ? theme.grid : theme.surface }]}
+      style={({ pressed }) => [styles.stepBtn, compact && styles.stepBtnCompact, { borderColor: theme.border, backgroundColor: pressed ? theme.grid : theme.surface }]}
     >
       <Text style={[styles.stepText, { color: theme.text }]}>{label}</Text>
     </Pressable>
@@ -96,9 +147,20 @@ function StepButton({ label, onPress }: { label: string; onPress(): void }) {
 function SliderInput({ panel, value, onChange }: InputProps) {
   const theme = useDashTheme();
   const [size, onLayout] = useLayout();
-  const { min = 0, max = 10, step = 1, unit } = panel.options;
+  const { min = 0, max = 10, step = 1, unit, labels } = panel.options;
   const v = typeof value === 'number' ? value : null;
-  const frac = v == null ? 0 : (v - min) / (max - min || 1);
+  const toFrac = (x: number) => (x - min) / (max - min || 1);
+  const frac = v == null ? 0 : toFrac(v);
+  // Ranges that straddle zero (e.g. understeer ← 0 → oversteer) fill outward from zero.
+  const origin = min < 0 && max > 0 ? toFrac(0) : 0;
+  const fillStart = Math.min(origin, frac);
+  // With labels, a value sitting exactly on one reads as that label.
+  const labelAt = (x: number) => {
+    if (!labels?.length) return undefined;
+    const i = labels.length === 1 ? 0 : toFrac(x) * (labels.length - 1);
+    return Number.isInteger(Math.round(i * 1e6) / 1e6) ? labels[Math.round(i)] : undefined;
+  };
+  const display = v == null ? 'Drag to set' : labelAt(v) ?? `${v}${unit ? ` ${unit}` : ''}`;
 
   const set = (x: number) => {
     if (!size.width) return;
@@ -109,11 +171,9 @@ function SliderInput({ panel, value, onChange }: InputProps) {
   return (
     <View style={styles.sliderWrap}>
       <View style={styles.sliderLabels}>
-        <Text style={[styles.minmax, { color: theme.textMuted }]}>{min}</Text>
-        <Text style={[styles.sliderValue, { color: theme.text }]}>
-          {v == null ? 'Drag to set' : `${v}${unit ? ` ${unit}` : ''}`}
-        </Text>
-        <Text style={[styles.minmax, { color: theme.textMuted }]}>{max}</Text>
+        {!labels?.length && <Text style={[styles.minmax, { color: theme.textMuted }]}>{min}</Text>}
+        <Text style={[styles.sliderValue, { color: theme.text }, !!labels?.length && styles.sliderValueCentered]}>{display}</Text>
+        {!labels?.length && <Text style={[styles.minmax, { color: theme.textMuted }]}>{max}</Text>}
       </View>
       <View
         onLayout={onLayout}
@@ -124,14 +184,19 @@ function SliderInput({ panel, value, onChange }: InputProps) {
         onResponderGrant={(e) => set(e.nativeEvent.locationX)}
         onResponderMove={(e) => set(e.nativeEvent.locationX)}
         accessibilityRole="adjustable"
-        accessibilityValue={{ min, max, now: v ?? undefined }}
+        accessibilityValue={{ min, max, now: v ?? undefined, text: v == null ? undefined : display }}
         accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={(e) =>
           onChange(Math.min(max, Math.max(min, (v ?? min) + (e.nativeEvent.actionName === 'increment' ? step : -step))))
         }
       >
         <View pointerEvents="none" style={[styles.track, { backgroundColor: theme.grid }]}>
-          <View style={[styles.trackFill, { width: `${frac * 100}%`, backgroundColor: theme.accent }]} />
+          <View
+            style={[
+              styles.trackFill,
+              { left: `${fillStart * 100}%`, width: `${v == null ? 0 : Math.abs(frac - origin) * 100}%`, backgroundColor: theme.accent },
+            ]}
+          />
         </View>
         {v != null && (
           <View
@@ -140,6 +205,19 @@ function SliderInput({ panel, value, onChange }: InputProps) {
           />
         )}
       </View>
+      {!!labels?.length && (
+        <View style={styles.tickRow}>
+          {labels.map((l, i) => {
+            const last = labels.length - 1;
+            const edge = i === 0 ? styles.tickStart : i === last ? styles.tickEnd : { left: `${(i / last) * 100}%` as const };
+            return (
+              <Text key={i} style={[styles.minmax, styles.tick, edge, { color: theme.textMuted }]} numberOfLines={1}>
+                {l}
+              </Text>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -257,17 +335,28 @@ function CounterInput({ panel }: { panel: InputPanel }) {
 const styles = StyleSheet.create({
   numberRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   numberField: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, height: 44 },
-  numberText: { flex: 1, minWidth: 0, width: '100%', fontSize: 20, fontWeight: '600', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  // Android gives TextInput default padding that eats into narrow fields.
+  numberText: { flex: 1, minWidth: 0, width: '100%', paddingHorizontal: 0, paddingVertical: 0, fontSize: 20, fontWeight: '600', fontVariant: ['tabular-nums'], textAlign: 'center' },
   unit: { fontSize: 14 },
+  numberRowCompact: { gap: 4 },
+  numberFieldCompact: { paddingHorizontal: 4 },
+  numberTextCompact: { fontSize: 17 },
+  stepBtnCompact: { width: 32 },
   stepBtn: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontSize: 22, fontWeight: '500' },
   sliderWrap: { flex: 1, justifyContent: 'center', gap: 6 },
   sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   minmax: { fontSize: 11 },
   sliderValue: { fontSize: 16, fontWeight: '600' },
+  sliderValueCentered: { flex: 1, textAlign: 'center' },
+  tickRow: { height: 14 },
+  // Middle labels are centred on their point along the track; the ends hug the edges.
+  tick: { position: 'absolute', width: 120, marginLeft: -60, textAlign: 'center' },
+  tickStart: { left: 0, marginLeft: 0, textAlign: 'left' },
+  tickEnd: { right: 0, marginLeft: 0, textAlign: 'right' },
   sliderHit: { height: 32, justifyContent: 'center' },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  trackFill: { height: '100%' },
+  trackFill: { position: 'absolute', height: '100%' },
   thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 2, top: 5 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   toggleRow: { flex: 1, flexDirection: 'row', alignItems: 'center' },

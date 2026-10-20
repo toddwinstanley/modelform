@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFrames,
+  formatClock,
   formatValue,
   GrafanaClient,
   interpolate,
   layoutDashboard,
   MemoryEntryStore,
   LocalDataSource,
+  parseClockDigits,
   parseRange,
   parseTime,
   queryPanel,
@@ -237,5 +239,26 @@ describe('series naming', () => {
   });
   it('prefers displayNameFromDS (Prometheus legendFormat)', () => {
     expect(toSeries([frame('', { code: '200' }, { displayNameFromDS: '200 OK' })])[0].name).toBe('200 OK');
+  });
+});
+
+describe('lap time clock', () => {
+  it('fills digits from the right as MM:SS.hh', () => {
+    expect(parseClockDigits('13245')).toBe(92.45);
+    expect(parseClockDigits('5')).toBe(0.05);
+    expect(parseClockDigits('100000')).toBe(600);
+    expect(parseClockDigits('01:32.45')).toBe(92.45);
+    expect(parseClockDigits('')).toBeNull();
+  });
+
+  it('rejects seconds past 59', () => {
+    expect(parseClockDigits('16000')).toBeNull();
+  });
+
+  it('formats seconds back to MM:SS.hh', () => {
+    expect(formatClock(92.45)).toBe('01:32.45');
+    expect(formatClock(59.999)).toBe('01:00.00');
+    expect(formatClock(6000)).toBe('100:00.00');
+    for (const d of ['13245', '5959', '995999']) expect(formatClock(parseClockDigits(d)!).replace(/\D/g, '')).toBe(d.padStart(6, '0'));
   });
 });
