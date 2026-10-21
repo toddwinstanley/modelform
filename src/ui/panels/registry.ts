@@ -8,6 +8,7 @@ import { TimeSeriesPanel } from './TimeSeriesPanel';
 const registry: Record<string, ComponentType<PanelProps>> = {
   timeseries: TimeSeriesPanel,
   graph: TimeSeriesPanel,
+  trend: TimeSeriesPanel,
   stat: StatPanel,
   singlestat: StatPanel,
   gauge: GaugePanel,

@@ -23,10 +23,11 @@ export const timeField = (frame: DataFrame) => frame.fields.find((f) => f.type =
 
 export const numberFields = (frame: DataFrame) => frame.fields.filter((f) => f.type === 'number');
 
-/** One plottable line: a numeric field paired with its frame's time field. */
+/** One plottable line: a numeric field paired with its frame's time field (or, for toXYSeries, its x field). */
 export interface Series {
   key: string;
   name: string;
+  /** x positions: epoch ms for time series, the x field's values for toXYSeries. */
   times: number[];
   values: Array<number | null>;
   field: Field;
@@ -66,6 +67,40 @@ export function toSeries(frames: DataFrame[]): Series[] {
     }
   });
   return uniqueNames(out, (s) => s.field, frames);
+}
+
+/**
+ * Series against a numeric x field, as Grafana's "trend" panel plots them: x is the field named
+ * `xField` (in frames that have it), else each frame's first number field; every other number
+ * field is a series. Points are put in x order, since the line is drawn left to right.
+ */
+export function toXYSeries(frames: DataFrame[], xField?: string): { series: Series[]; x?: { field: Field; frame: DataFrame } } {
+  const out: Series[] = [];
+  let x: { field: Field; frame: DataFrame } | undefined;
+  const multiple = frames.length > 1;
+  frames.forEach((frame, fi) => {
+    const nums = numberFields(frame);
+    const xf = xField ? frame.fields.find((f) => f.name === xField) : nums[0];
+    if (!xf) return;
+    x ??= { field: xf, frame };
+    const xs = xf.values.map((v) => (v == null ? NaN : Number(v)));
+    const order = xs.map((_, i) => i).filter((i) => !Number.isNaN(xs[i]));
+    if (order.some((i, k) => k > 0 && xs[i] < xs[order[k - 1]])) order.sort((a, b) => xs[a] - xs[b]);
+    for (const field of nums) {
+      if (field === xf) continue;
+      out.push({
+        key: `${frame.refId ?? fi}/${field.name}/${JSON.stringify(field.labels ?? {})}`,
+        name: fieldDisplayName(field, frame, multiple),
+        times: order.map((i) => xs[i]),
+        values: order.map((i) => {
+          const v = field.values[i];
+          return v == null || Number.isNaN(Number(v)) ? null : Number(v);
+        }),
+        field,
+      });
+    }
+  });
+  return { series: uniqueNames(out, (s) => s.field, frames), x };
 }
 
 /**

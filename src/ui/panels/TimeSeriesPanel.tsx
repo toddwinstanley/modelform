@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { formatValue } from '../../core/format';
-import { formatTimeTick, formatTooltipTime, linearScale, niceTicks, styledSeries, tickDecimals, yDomain, type StyledSeries } from '../chart';
+import { formatTimeTick, formatTooltipTime, linearScale, niceTicks, styledSeries, styledXYSeries, tickDecimals, yDomain, type StyledSeries } from '../chart';
 import { useDashboard } from '../context';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
@@ -10,14 +10,21 @@ import { Legend, NoData, showLegend, useLayout, type PanelProps } from './common
 const PAD = { top: 8, right: 8, bottom: 20, left: 44 };
 const BAR_MAX = 24;
 
-/** Grafana "timeseries" (and legacy "graph") panels: lines, points, bars and area fills. */
+/**
+ * Grafana "timeseries" (and legacy "graph") panels: lines, points, bars and area fills.
+ * Also "trend" panels, which are the same chart against a numeric x field (`options.xField`).
+ */
 export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const { range } = useDashboard();
   const [size, onLayout] = useLayout();
   const [hoverX, setHoverX] = useState<number | null>(null);
 
-  const series = useMemo(() => styledSeries(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
+  const numericX = panel.type === 'trend';
+  const { series, xConfig } = useMemo(
+    () => (numericX ? styledXYSeries(panel, frames, theme.scheme) : { series: styledSeries(panel, frames, theme.scheme), xConfig: {} }),
+    [numericX, panel, frames, theme.scheme],
+  );
   if (!series.length || series.every((s) => s.values.every((v) => v == null))) return <NoData />;
 
   const style = (s: StyledSeries) => s.config.custom?.drawStyle ?? (panel.type === 'graph' && panel.bars ? 'bars' : 'line');
@@ -31,9 +38,12 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const ticks = niceTicks(dMin, dMax, plotH < 100 ? 2 : 4);
   const yMin = series[0].config.min ?? ticks[0];
   const yMax = series[0].config.max ?? ticks[ticks.length - 1];
-  const x = linearScale(range.from, range.to, PAD.left, PAD.left + plotW);
+  const [xFrom, xTo] = numericX ? xExtent(series) : [range.from, range.to];
+  const x = linearScale(xFrom, xTo, PAD.left, PAD.left + plotW);
   const y = linearScale(yMin, yMax, PAD.top + plotH, PAD.top);
-  const span = range.to - range.from;
+  const span = xTo - xFrom;
+  const xTicks = numericX ? numberTicks(xFrom, xTo, plotW) : timeTicks(xFrom, xTo, plotW);
+  const xLabel = (t: number) => (numericX ? formatValue(t, { ...xConfig, decimals: tickDecimals(xTicks) }) : formatTimeTick(t, span));
   const unitConfig = series[0].config;
 
   const barSeries = series.filter((s) => style(s) === 'bars');
@@ -42,7 +52,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const groupW = Math.min(slot * 0.8, BAR_MAX * barSeries.length);
   const barW = Math.max(2, groupW / Math.max(barSeries.length, 1) - (barSeries.length > 1 ? 2 : 0));
 
-  const hover = hoverX == null ? null : nearest(series, range.from + ((hoverX - PAD.left) / (plotW || 1)) * span);
+  const hover = hoverX == null ? null : nearest(series, xFrom + ((hoverX - PAD.left) / (plotW || 1)) * span);
 
   return (
     <View style={styles.fill}>
@@ -65,23 +75,23 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
                 </SvgText>
               </G>
             ))}
-            {timeTicks(range.from, range.to, plotW).map((t, i, all) => (
+            {xTicks.map((t) => (
               <SvgText
                 key={t}
                 x={x(t)}
                 y={size.height - 5}
                 fontSize={10}
                 fill={theme.textMuted}
-                textAnchor={i === 0 ? 'start' : i === all.length - 1 ? 'end' : 'middle'}
+                textAnchor={x(t) - PAD.left < 20 ? 'start' : PAD.left + plotW - x(t) < 20 ? 'end' : 'middle'}
               >
-                {formatTimeTick(t, span)}
+                {xLabel(t)}
               </SvgText>
             ))}
 
             {barSeries.map((s, si) =>
               s.times.map((t, i) => {
                 const v = s.values[i];
-                if (v == null || t < range.from || t > range.to) return null;
+                if (v == null || t < xFrom || t > xTo) return null;
                 const left = x(t) - groupW / 2 + si * (groupW / barSeries.length);
                 return <Path key={`${s.key}-${i}`} d={barPath(left, barW, y(Math.max(v, 0)), y(Math.min(v, 0)), v >= 0)} fill={s.color} />;
               }),
@@ -135,7 +145,9 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
               x(hover.time) > size.width / 2 ? { right: size.width - x(hover.time) + 8 } : { left: x(hover.time) + 8 },
             ]}
           >
-            <Text style={[styles.tooltipTime, { color: theme.textMuted }]}>{formatTooltipTime(hover.time)}</Text>
+            <Text style={[styles.tooltipTime, { color: theme.textMuted }]}>
+              {numericX ? formatValue(hover.time, xConfig) : formatTooltipTime(hover.time)}
+            </Text>
             {hover.rows.map((r) => (
               <View key={r.key} style={styles.tooltipRow}>
                 <View style={[styles.swatch, { backgroundColor: r.color }]} />
@@ -188,6 +200,23 @@ function barPath(left: number, w: number, top: number, bottom: number, up: boole
 function timeTicks(from: number, to: number, width: number): number[] {
   const n = width < 220 ? 2 : width < 400 ? 3 : 5;
   return Array.from({ length: n }, (_, i) => from + ((to - from) * i) / (n - 1));
+}
+
+/** Round-numbered ticks inside [from, to] for a numeric x axis. */
+function numberTicks(from: number, to: number, width: number): number[] {
+  const ticks = niceTicks(from, to, width < 220 ? 2 : width < 400 ? 3 : 5).filter((t) => t >= from && t <= to);
+  return ticks.length ? ticks : [from, to];
+}
+
+function xExtent(series: StyledSeries[]): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const s of series) {
+    if (!s.times.length) continue;
+    min = Math.min(min, s.times[0]);
+    max = Math.max(max, s.times[s.times.length - 1]);
+  }
+  return min === Infinity ? [0, 1] : min === max ? [min - 1, max + 1] : [min, max];
 }
 
 function nearest(series: StyledSeries[], t: number) {

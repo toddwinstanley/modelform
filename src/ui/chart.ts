@@ -1,5 +1,5 @@
 import type { DataFrame } from '../core/frame';
-import { fieldDisplayName, numberFields, toSeries, uniqueNames, type Field, type Series } from '../core/frame';
+import { fieldDisplayName, numberFields, toSeries, toXYSeries, uniqueNames, type Field, type Series } from '../core/frame';
 import { resolveFieldConfig } from '../core/fieldconfig';
 import { seriesColor, thresholdStep, resolveColor } from '../core/format';
 import { reduce } from '../core/reduce';
@@ -50,9 +50,20 @@ export interface StyledSeries extends Series {
 
 /** Time series with resolved config and colors in fixed palette order. */
 export function styledSeries(panel: Panel, frames: DataFrame[], scheme: 'light' | 'dark'): StyledSeries[] {
+  return styleSeries(panel, toSeries(frames), frames, scheme);
+}
+
+/** Series against the panel's numeric x field (`options.xField`), with that field's resolved config for axis labels. */
+export function styledXYSeries(panel: Panel, frames: DataFrame[], scheme: 'light' | 'dark'): { series: StyledSeries[]; xConfig: FieldConfig } {
+  const { series, x } = toXYSeries(frames, panel.options?.xField || undefined);
+  const xConfig = x ? resolveFieldConfig(panel, x.field, x.frame, x.field.name) : {};
+  return { series: styleSeries(panel, series, frames, scheme), xConfig };
+}
+
+function styleSeries(panel: Panel, series: Series[], frames: DataFrame[], scheme: 'light' | 'dark'): StyledSeries[] {
   const frameOf = new Map<Series['field'], DataFrame>();
   frames.forEach((f) => f.fields.forEach((field) => frameOf.set(field, f)));
-  return toSeries(frames).map((s, i) => {
+  return series.map((s, i) => {
     const config = resolveFieldConfig(panel, s.field, frameOf.get(s.field)!, s.name);
     return { ...s, name: config.displayName ?? s.name, config, color: seriesColor(i, scheme, config) };
   });
