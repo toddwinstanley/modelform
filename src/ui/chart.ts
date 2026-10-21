@@ -1,5 +1,5 @@
 import type { DataFrame } from '../core/frame';
-import { fieldDisplayName, numberFields, toSeries, toXYSeries, uniqueNames, type Field, type Series } from '../core/frame';
+import { fieldDisplayName, numberFields, toMillis, toSeries, toXYSeries, uniqueNames, type Field, type Series } from '../core/frame';
 import { resolveFieldConfig } from '../core/fieldconfig';
 import { seriesColor, thresholdStep, resolveColor } from '../core/format';
 import { reduce } from '../core/reduce';
@@ -37,6 +37,31 @@ export function formatTimeTick(t: number, spanMs: number): string {
   if (spanMs <= 2 * 86_400_000) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   if (spanMs <= 180 * 86_400_000) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+}
+
+/** The field a bar chart groups by: `options.xField`, else the first string field, else the first time field. */
+export function barCategory(panel: Panel, frame: DataFrame): Field | undefined {
+  const xField: string | undefined = panel.options?.xField;
+  if (xField) return frame.fields.find((f) => f.name === xField);
+  return frame.fields.find((f) => f.type === 'string') ?? frame.fields.find((f) => f.type === 'time');
+}
+
+/** Bar chart category labels. Times are dates, or times of day when the bars are less than a day apart. */
+export function categoryLabels(field: Field): string[] {
+  if (field.type !== 'time') return field.values.map((v) => (v == null ? '' : String(v)));
+  const times = field.values.map((v) => (v == null ? null : toMillis(v)));
+  let step = Infinity;
+  times.forEach((t, i) => {
+    const prev = times[i - 1];
+    if (t != null && prev != null && t !== prev) step = Math.min(step, Math.abs(t - prev));
+  });
+  return times.map((t) => {
+    if (t == null) return '';
+    const d = new Date(t);
+    if (step < 86_400_000) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (step < 28 * 86_400_000) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+  });
 }
 
 export function formatTooltipTime(t: number): string {

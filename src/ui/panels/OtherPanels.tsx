@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
-import { reducedValues } from '../chart';
+import { barCategory, categoryLabels, reducedValues } from '../chart';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
 
@@ -113,17 +113,19 @@ export function TextPanel({ panel }: PanelProps) {
   );
 }
 
-/** Grafana "barchart": categories from `xField` or the first string field, grouped bars per numeric field. */
-export function BarChartPanel({ panel, frames }: PanelProps) {
+/**
+ * Grafana "barchart": one group of bars per category, one bar per numeric field. Categories come from `xField`,
+ * else the first string field, else the first time field, as in Grafana.
+ */
+export function BarChartPanel({ panel, frames, width }: PanelProps) {
   const theme = useDashTheme();
   const values = useMemo(() => reducedValues(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
   const frame = frames[0];
-  const xField: string | undefined = panel.options?.xField;
-  const category = frame?.fields.find((f) => (xField ? f.name === xField : f.type === 'string'));
+  const category = frame && barCategory(panel, frame);
   if (!frame || !values.length) return <NoData />;
 
   // Without a category field, show one bar per series using the reduced value.
-  const labels = category ? category.values.map(String) : values.map((v) => v.name);
+  const labels = category ? categoryLabels(category) : values.map((v) => v.name);
   const allNumeric = frame.fields.filter((f) => f.type === 'number');
   const numeric = category ? allNumeric.filter((f) => f !== category) : [];
   const colorOf = (f: (typeof allNumeric)[number]) => values[allNumeric.indexOf(f)]?.color ?? theme.accent;
@@ -131,6 +133,8 @@ export function BarChartPanel({ panel, frames }: PanelProps) {
     ? labels.map((label, i) => ({ label, values: numeric.map((f) => ({ v: Number(f.values[i] ?? 0), color: colorOf(f) })) }))
     : values.map((v) => ({ label: v.name, values: [{ v: v.value ?? 0, color: v.color }] }));
   const max = Math.max(...bars.flatMap((b) => b.values.map((x) => x.v)), 0) || 1;
+  // Label every nth group so labels get ~44px each; a month of days would otherwise be unreadable.
+  const every = Math.max(1, Math.ceil(bars.length / Math.max(1, Math.floor(width / 44))));
 
   return (
     <View style={styles.fill}>
@@ -143,12 +147,12 @@ export function BarChartPanel({ panel, frames }: PanelProps) {
               ))}
             </View>
             <Text style={[styles.barLabel, { color: theme.textMuted }]} numberOfLines={1}>
-              {b.label}
+              {i % every === 0 ? b.label : ' '}
             </Text>
           </View>
         ))}
       </View>
-      {numeric.length > 1 && <Legend items={numeric.map((f, i) => ({ key: f.name, name: f.name, color: values[i]?.color ?? theme.accent }))} />}
+      {numeric.length > 1 && <Legend items={numeric.map((f) => ({ key: f.name, name: f.config?.displayName ?? f.name, color: colorOf(f) }))} />}
     </View>
   );
 }
