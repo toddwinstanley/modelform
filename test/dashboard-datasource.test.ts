@@ -66,8 +66,59 @@ describe('transformations', () => {
     expect(organized[0].fields[1].config?.displayName).toBe('Pass');
   });
 
+  it('converts field types', () => {
+    const frame: DataFrame = {
+      fields: [
+        field('Laps', 'string', ['80', '', 'x']),
+        { name: 'time', type: 'time', values: [Date.UTC(2026, 9, 14, 12)] },
+        field('ok', 'string', ['yes', '0']),
+        field('when', 'string', ['2026-10-14T12:00:00Z', '1792108800000']),
+      ],
+    };
+    const [out] = applyTransformations([frame], [
+      {
+        id: 'convertFieldType',
+        options: {
+          conversions: [
+            { targetField: 'Laps', destinationType: 'number' },
+            { targetField: 'time', destinationType: 'string', dateFormat: 'YYYY' },
+            { targetField: 'ok', destinationType: 'boolean' },
+            { targetField: 'when', destinationType: 'time' },
+          ],
+        },
+      },
+    ]);
+    expect(out.fields.map((f) => [f.type, f.values])).toEqual([
+      ['number', [80, null, null]],
+      ['string', ['2026']],
+      ['boolean', [true, false]],
+      ['time', [Date.UTC(2026, 9, 14, 12), 1792108800000]],
+    ]);
+  });
+
+  it('pivots long rows into a matrix, like Section Rankings', () => {
+    const long: DataFrame = {
+      fields: [
+        field('lap', 'string', ['L8', 'L8', 'L8', 'L7', 'L7']),
+        field('section', 'string', ['S1', 'S2', 'Total', 'S2', 'Total']),
+        { name: 'lost', type: 'number', values: [null, 0.28, 0.94, 0.1, 0.1], config: { decimals: 3 } },
+      ],
+    };
+    const t = (emptyValue?: string) => [{ id: 'groupingToMatrix', options: { columnField: 'section', rowField: 'lap', valueField: 'lost', emptyValue } }];
+    const [m] = applyTransformations([long], t('null'));
+    expect(m.fields.map((f) => [f.name, f.values])).toEqual([
+      ['lap\\section', ['L8', 'L7']],
+      ['S1', [null, null]],
+      ['S2', [0.28, 0.1]],
+      ['Total', [0.94, 0.1]],
+    ]);
+    expect(m.fields[1].config?.decimals).toBe(3);
+    expect(applyTransformations([long], t())[0].fields[1].values).toEqual([null, '']);
+    expect(applyTransformations([long], t('zero'))[0].fields[1].values).toEqual([null, 0]);
+  });
+
   it('skips disabled and unsupported transformations', () => {
-    const t = [{ id: 'filterFieldsByName', disabled: true, options: { include: { names: ['Lap'] } } }, { id: 'groupingToMatrix' }];
+    const t = [{ id: 'filterFieldsByName', disabled: true, options: { include: { names: ['Lap'] } } }, { id: 'calculateField' }];
     expect(applyTransformations([laps], t)).toEqual([laps]);
   });
 });
