@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { formatClock, parseClockDigits, type InputPanel, type InputValue } from '../../core/inputs';
 import { startOf } from '../../core/time';
 import { Chip } from '../Toolbar';
@@ -56,6 +56,12 @@ function NumberInput({ panel, value, onChange }: InputProps) {
   }, [value]);
 
   const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
+  const integer = Number.isInteger(step);
+  const signed = min == null || min < 0;
+  // decimal-pad has no minus key, so signed fields (e.g. camber) need a keyboard that does.
+  const keyboardType = signed
+    ? Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'
+    : integer ? 'number-pad' : 'decimal-pad';
   const bump = (dir: number) => {
     const base = typeof value === 'number' ? value : Number(text) || 0;
     onChange(Number(clamp(base + dir * step).toFixed(decimalsOf(step))));
@@ -70,10 +76,10 @@ function NumberInput({ panel, value, onChange }: InputProps) {
           onChangeText={(t) => {
             setText(t);
             const n = Number(t.replace(',', '.'));
-            if (t.trim() && !Number.isNaN(n)) onChange(clamp(n));
+            if (t.trim() && !Number.isNaN(n)) onChange(clamp(integer ? Math.round(n) : n));
             else if (!t.trim()) onChange(null);
           }}
-          keyboardType="decimal-pad"
+          keyboardType={keyboardType}
           placeholder={placeholder ?? '—'}
           placeholderTextColor={theme.textMuted}
           style={[styles.numberText, compact && styles.numberTextCompact, { color: theme.text }]}
