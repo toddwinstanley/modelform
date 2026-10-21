@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyTransformations, type DataFrame, type Panel } from '../src/core';
-import { cellDisplay, contrastText, tableColumns, tableFooter } from '../src/ui/table';
+import { cellDisplay, contrastText, initialSort, nextSort, sortedRows, tableColumns, tableFooter } from '../src/ui/table';
 
 const field = (name: string, type: 'string' | 'number', values: unknown[]) => ({ name, type, values });
 const steps = [
@@ -128,5 +128,33 @@ describe('table footer', () => {
   it('hides columns marked hideFrom.viz, as Grafana 13 saves them', () => {
     const panel = base({ fieldConfig: { defaults: {}, overrides: [{ matcher: { id: 'byName', options: 'Fuel' }, properties: [{ id: 'custom.hideFrom.viz', value: true }] }] } });
     expect(tableColumns(panel, frame).map((c) => c.name)).toEqual(['Lap', 'Time']);
+  });
+});
+
+describe('table sorting', () => {
+  const frame: DataFrame = {
+    fields: [field('Lap', 'string', ['L10', 'L9', null, 'L1']), field('Time', 'number', [80, null, 79, 81]), { name: 'At', type: 'time', values: ['2026-10-19T14:45:00Z', 1792420000000, 1792410000000, 1792400000000] }],
+  };
+  const panel = (options: Record<string, unknown> = {}): Panel => ({ type: 'table', gridPos: { x: 0, y: 0, w: 24, h: 10 }, options });
+  const cols = tableColumns(panel(), frame);
+  const by = (name: string, desc = false) => ({ key: cols.find((c) => c.name === name)!.key, desc });
+
+  it('sorts numbers and times numerically and text naturally, with empty cells last', () => {
+    expect(sortedRows(cols, 4, null)).toEqual([0, 1, 2, 3]);
+    expect(sortedRows(cols, 4, by('Lap'))).toEqual([3, 1, 0, 2]);
+    expect(sortedRows(cols, 4, by('Lap', true))).toEqual([0, 1, 3, 2]);
+    expect(sortedRows(cols, 4, by('Time'))).toEqual([2, 0, 3, 1]);
+    expect(sortedRows(cols, 4, by('Time', true))).toEqual([3, 0, 2, 1]);
+    expect(sortedRows(cols, 4, by('At'))).toEqual([3, 2, 1, 0]);
+  });
+
+  it('cycles ascending, descending, unsorted, and starts from options.sortBy', () => {
+    const k = by('Time').key;
+    expect(nextSort(null, k)).toEqual({ key: k, desc: false });
+    expect(nextSort({ key: k, desc: false }, k)).toEqual({ key: k, desc: true });
+    expect(nextSort({ key: k, desc: true }, k)).toBeNull();
+    expect(nextSort({ key: k, desc: true }, by('Lap').key)).toEqual({ key: by('Lap').key, desc: false });
+    expect(initialSort(panel({ sortBy: [{ displayName: 'Time', desc: true }] }), cols)).toEqual(by('Time', true));
+    expect(initialSort(panel({ sortBy: [] }), cols)).toBeNull();
   });
 });

@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
-import { contrastText, cellDisplay, tableColumns, tableFooter } from '../table';
+import { contrastText, cellDisplay, initialSort, nextSort, sortedRows, tableColumns, tableFooter, type TableSort } from '../table';
 import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
@@ -71,8 +71,13 @@ export function TablePanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const frame = frames[0];
   const columns = useMemo(() => (frame ? tableColumns(panel, frame, frames.length > 1) : []), [panel, frame, frames.length]);
+  // undefined until the user taps a header; until then the panel's own sortBy applies.
+  const [tapped, setSort] = useState<TableSort | null>();
+  const sort = tapped === undefined ? initialSort(panel, columns) : tapped;
+  const order = useMemo(() => sortedRows(columns, frame ? frameLength(frame) : 0, sort), [columns, frame, sort]);
   if (!frame || !frameLength(frame)) return <NoData />;
-  const rows = Math.min(frameLength(frame), 500);
+  // Sort first, so the 500 drawn are the top of the sorted table.
+  const shown = order.slice(0, 500);
   const rowColumn = columns.find((c) => c.applyToRow);
   // Over every row, not just the 500 drawn, as in Grafana.
   const footer = tableFooter(columns);
@@ -82,13 +87,26 @@ export function TablePanel({ panel, frames }: PanelProps) {
       <View style={styles.fill}>
         <ScrollView nestedScrollEnabled style={styles.fill}>
           <View style={[styles.tr, { borderBottomColor: theme.border }]}>
-            {columns.map((c) => (
-              <Text key={c.key} style={[styles.th, { width: c.width, color: theme.textSecondary, textAlign: c.align }]} numberOfLines={2}>
-                {c.name}
-              </Text>
-            ))}
+            {columns.map((c) => {
+              const active = sort?.key === c.key;
+              return (
+                <Pressable
+                  key={c.key}
+                  onPress={() => setSort(nextSort(sort, c.key))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${c.name}`}
+                  accessibilityState={{ selected: active }}
+                  style={{ width: c.width }}
+                >
+                  <Text style={[styles.th, { color: active ? theme.text : theme.textSecondary, textAlign: c.align }]} numberOfLines={2}>
+                    {c.name}
+                    {active ? (sort!.desc ? ' ↓' : ' ↑') : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          {Array.from({ length: rows }, (_, i) => {
+          {shown.map((i) => {
             const rowBg = rowColumn ? cellDisplay(rowColumn, rowColumn.field.values[i], theme.accent).background : undefined;
             return (
               <View key={i} style={[styles.tr, { borderBottomColor: theme.grid }, rowBg ? { backgroundColor: rowBg } : null]}>

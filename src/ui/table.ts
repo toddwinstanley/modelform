@@ -187,3 +187,51 @@ export function contrastText(background: string, fallback: string): string {
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return lum > 0.55 ? '#111111' : '#ffffff';
 }
+
+export interface TableSort {
+  /** TableColumn.key */
+  key: string;
+  desc: boolean;
+}
+
+/** The panel's starting sort, from `options.sortBy` (matched by display name, as Grafana saves it). */
+export function initialSort(panel: Panel, columns: TableColumn[]): TableSort | null {
+  const first = (panel.options?.sortBy as Array<{ displayName?: string; desc?: boolean }> | undefined)?.[0];
+  const col = first?.displayName != null ? columns.find((c) => c.name === first.displayName || c.field.name === first.displayName) : undefined;
+  return col ? { key: col.key, desc: !!first!.desc } : null;
+}
+
+/** Tapping a header: ascending, then descending, then back to the query's order. */
+export function nextSort(current: TableSort | null, key: string): TableSort | null {
+  if (current?.key !== key) return { key, desc: false };
+  return current.desc ? null : { key, desc: true };
+}
+
+/**
+ * Row indexes in display order. Numbers and times sort numerically, text naturally ("L9" before "L10"), and
+ * empty cells go last either way. Ties keep the query's order.
+ */
+export function sortedRows(columns: TableColumn[], length: number, sort: TableSort | null): number[] {
+  const rows = Array.from({ length }, (_, i) => i);
+  const col = sort && columns.find((c) => c.key === sort.key);
+  if (!col) return rows;
+  const { field } = col;
+  const dir = sort.desc ? -1 : 1;
+  const key = (v: unknown) => (field.type === 'time' ? toMillis(v) : field.type === 'number' || field.type === 'boolean' ? Number(v) : v);
+  const empty = (v: unknown) => v == null || v === '' || (typeof v === 'number' && Number.isNaN(v));
+  return rows.sort((a, b) => {
+    const va = field.values[a];
+    const vb = field.values[b];
+    if (empty(va) || empty(vb)) return empty(va) === empty(vb) ? a - b : empty(va) ? 1 : -1;
+    const ka = key(va);
+    const kb = key(vb);
+    const cmp = typeof ka === 'number' && typeof kb === 'number' ? ka - kb : compareText(String(ka), String(kb));
+    return cmp * dir || a - b;
+  });
+}
+
+// Natural order where the runtime has Intl.Collator, plain string order where it doesn't.
+const compareText: (a: string, b: string) => number =
+  typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
+    ? new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
+    : (a, b) => (a < b ? -1 : a > b ? 1 : 0);
