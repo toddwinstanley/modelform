@@ -229,8 +229,12 @@ function SliderInput({ panel, value, onChange }: InputProps) {
 }
 
 function SelectInput({ panel, value, onChange }: InputProps) {
-  const { choices = [], multi } = panel.options;
+  const theme = useDashTheme();
+  const form = useInputForm();
+  const { choicesFrom, multi, placeholder } = panel.options;
+  const choices = (choicesFrom ? form.choices[choicesFrom] : panel.options.choices) ?? [];
   const selected = Array.isArray(value) ? value : value == null ? [] : [value as string | number];
+  if (!choices.length && placeholder) return <Text style={{ color: theme.textMuted }}>{placeholder}</Text>;
   return (
     <View style={styles.wrap}>
       {choices.map((c) => {

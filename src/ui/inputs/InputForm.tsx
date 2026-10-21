@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { entryToInputValue, inputPanels, toEntries, type InputValue } from '../../core/inputs';
+import { entryToInputValue, inputPanels, toEntries, type Entry, type InputChoice, type InputValue } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';
@@ -11,15 +11,20 @@ import { InputFormContext, type InputFormState } from './formContext';
 export interface InputFormProps {
   dashboard: Dashboard;
   store: EntryStore;
-  onSaved?(count: number): void;
+  /** Called after Save with the entries just recorded. */
+  onSaved?(count: number, entries: Entry[]): void;
+  /** Choice lists for input-select panels that set `choicesFrom`, keyed by that name. */
+  choices?: Record<string, InputChoice[]>;
 }
+
+const NO_CHOICES: Record<string, InputChoice[]> = {};
 
 /**
  * A data entry form laid out from dashboard JSON with input-* panels. Edited values are
  * staged until Save, then recorded together at the chosen timestamp. Counters record
  * immediately on tap.
  */
-export function InputForm({ dashboard, store, onSaved }: InputFormProps) {
+export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: InputFormProps) {
   const theme = useDashTheme();
   const panels = useMemo(() => inputPanels(dashboard), [dashboard]);
   const [defaults, setDefaults] = useState<Record<string, InputValue>>({});
@@ -52,8 +57,9 @@ export function InputForm({ dashboard, store, onSaved }: InputFormProps) {
       },
       isDirty: (m) => m in edits,
       store,
+      choices,
     }),
-    [edits, defaults, store],
+    [edits, defaults, store, choices],
   );
 
   const dirty = Object.keys(edits).length;
@@ -62,11 +68,11 @@ export function InputForm({ dashboard, store, onSaved }: InputFormProps) {
     const ts = Date.now() + offsetMs;
     const entries = panels.filter((p) => p.options.metric in edits).flatMap((p) => toEntries(p, edits[p.options.metric], ts));
     if (!entries.length) return;
-    await store.add(entries);
+    const added = await store.add(entries);
     setEdits({});
     setOffsetMs(0);
     setStatus(`Saved ${entries.length} ${entries.length === 1 ? 'value' : 'values'}`);
-    onSaved?.(entries.length);
+    onSaved?.(added.length, added);
   }, [panels, edits, offsetMs, store, onSaved]);
 
   return (

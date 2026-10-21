@@ -41,6 +41,11 @@ export interface InputOptions {
   default?: number | string | boolean | 'last';
   /** input-select only. */
   choices?: InputChoice[];
+  /**
+   * input-select only: take the choices from the app at runtime instead of `choices`,
+   * for lists that live in app data (e.g. wheel sets). Names a key of InputForm's `choices` prop.
+   */
+  choicesFrom?: string;
   /** input-select only: allow selecting several. Each selection is recorded as its own entry. */
   multi?: boolean;
   /** input-counter only: the amount each tap records (default 1). */

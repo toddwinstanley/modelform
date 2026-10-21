@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { InputValue } from '../../core/inputs';
+import type { InputChoice, InputValue } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
 
 export interface InputFormState {
@@ -7,6 +7,8 @@ export interface InputFormState {
   setValue(metric: string, v: InputValue): void;
   isDirty(metric: string): boolean;
   store: EntryStore;
+  /** Runtime choice lists for input-select panels with `choicesFrom`. */
+  choices: Record<string, InputChoice[]>;
 }
 
 export const InputFormContext = createContext<InputFormState | null>(null);
