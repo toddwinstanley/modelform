@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
+import { contrastText, cellDisplay, tableColumns } from '../table';
 import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
@@ -61,34 +62,53 @@ function donutSlice(cx: number, cy: number, r: number, inner: number, a0: number
   return `M${p(r, a0)}A${r},${r} 0 ${large} 1 ${p(r, a1)}L${p(inner, a1)}A${inner},${inner} 0 ${large} 0 ${p(inner, a0)}Z`;
 }
 
-/** Grafana "table": the first frame, scrollable both ways. */
-export function TablePanel({ frames }: PanelProps) {
+/**
+ * Grafana "table". Each column follows its field config: display name, width, alignment, unit, decimals, value
+ * mappings and `noValue`; `custom.hidden` columns are left out. Cells can be colored text, colored backgrounds
+ * (optionally the whole row) or gauges.
+ */
+export function TablePanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const frame = frames[0];
+  const columns = useMemo(() => (frame ? tableColumns(panel, frame, frames.length > 1) : []), [panel, frame, frames.length]);
   if (!frame || !frameLength(frame)) return <NoData />;
   const rows = Math.min(frameLength(frame), 500);
-  const cell = (v: unknown, type: string) =>
-    v == null ? '' : type === 'time' ? new Date(Number(v)).toLocaleString() : type === 'number' ? formatValue(Number(v)) : String(v);
+  const rowColumn = columns.find((c) => c.applyToRow);
 
   return (
     <ScrollView horizontal>
       <ScrollView nestedScrollEnabled>
         <View style={[styles.tr, { borderBottomColor: theme.border }]}>
-          {frame.fields.map((f) => (
-            <Text key={f.name} style={[styles.th, { color: theme.textSecondary }]}>
-              {f.name}
+          {columns.map((c) => (
+            <Text key={c.key} style={[styles.th, { width: c.width, color: theme.textSecondary, textAlign: c.align }]} numberOfLines={2}>
+              {c.name}
             </Text>
           ))}
         </View>
-        {Array.from({ length: rows }, (_, i) => (
-          <View key={i} style={[styles.tr, { borderBottomColor: theme.grid }]}>
-            {frame.fields.map((f) => (
-              <Text key={f.name} style={[styles.td, { color: theme.text }, f.type === 'number' && styles.num]} numberOfLines={1}>
-                {cell(f.values[i], f.type)}
-              </Text>
-            ))}
-          </View>
-        ))}
+        {Array.from({ length: rows }, (_, i) => {
+          const rowBg = rowColumn ? cellDisplay(rowColumn, rowColumn.field.values[i], theme.accent).background : undefined;
+          return (
+            <View key={i} style={[styles.tr, { borderBottomColor: theme.grid }, rowBg ? { backgroundColor: rowBg } : null]}>
+              {columns.map((c) => {
+                const d = cellDisplay(c, c.field.values[i], theme.accent);
+                const bg = d.background ?? rowBg;
+                const color = d.color ?? (bg ? contrastText(bg, theme.text) : theme.text);
+                return (
+                  <View key={c.key} style={[styles.td, { width: c.width }, d.background ? { backgroundColor: d.background } : null]}>
+                    {d.gauge != null && (
+                      <View style={[styles.gaugeTrack, { backgroundColor: theme.grid }]}>
+                        <View style={[styles.gaugeFill, { width: `${d.gauge * 100}%`, backgroundColor: d.gaugeColor ?? theme.accent }]} />
+                      </View>
+                    )}
+                    <Text style={[styles.cellText, { color, textAlign: c.align }, c.field.type === 'number' && styles.num]} numberOfLines={c.wrap ? undefined : 1}>
+                      {d.text}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
       </ScrollView>
     </ScrollView>
   );
@@ -222,8 +242,11 @@ export function UnsupportedPanel({ panel }: PanelProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   tr: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  th: { width: 120, paddingVertical: 6, paddingRight: 8, fontSize: 12, fontWeight: '600' },
-  td: { width: 120, paddingVertical: 6, paddingRight: 8, fontSize: 12 },
+  th: { paddingVertical: 6, paddingHorizontal: 6, fontSize: 12, fontWeight: '600' },
+  td: { paddingVertical: 6, paddingHorizontal: 6, justifyContent: 'center' },
+  cellText: { fontSize: 12 },
+  gaugeTrack: { position: 'absolute', left: 6, right: 6, bottom: 3, height: 3, borderRadius: 2, overflow: 'hidden' },
+  gaugeFill: { height: '100%', borderRadius: 2 },
   num: { textAlign: 'right', fontVariant: ['tabular-nums'] },
   para: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
   heading: { fontSize: 16, fontWeight: '600' },

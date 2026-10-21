@@ -197,6 +197,13 @@ export function mappedResult(value: unknown, config: FieldConfig = {}): MappingR
       const { from, to, result } = m.options as { from?: number | null; to?: number | null; result: MappingResult };
       const v = Number(value);
       if (value != null && !Number.isNaN(v) && (from == null || v >= from) && (to == null || v <= to)) return result;
+    } else if (m.type === 'regex') {
+      const { pattern, result } = m.options as { pattern: string; result: MappingResult };
+      if (value == null) continue;
+      const re = regexOf(pattern);
+      const match = re && String(value).match(re);
+      // Grafana substitutes capture groups ($1) into the mapped text.
+      if (match) return { ...result, text: result.text?.replace(/\$(\d+)/g, (_, n) => match[Number(n)] ?? '') };
     } else if (m.type === 'special') {
       const { match, result } = m.options as { match: string; result: MappingResult };
       const isNull = value == null;
@@ -213,6 +220,15 @@ export function mappedResult(value: unknown, config: FieldConfig = {}): MappingR
     }
   }
   return undefined;
+}
+
+function regexOf(pattern: string): RegExp | undefined {
+  const m = /^\/(.*)\/([a-z]*)$/.exec(pattern);
+  try {
+    return m ? new RegExp(m[1], m[2]) : new RegExp(pattern);
+  } catch {
+    return undefined;
+  }
 }
 
 /** formatValue, with the field's value mappings applied first. */

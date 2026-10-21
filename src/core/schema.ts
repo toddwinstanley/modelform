@@ -71,6 +71,7 @@ export interface FieldConfig {
 export type ValueMapping =
   | { type: 'value'; options: Record<string, MappingResult> }
   | { type: 'range'; options: { from?: number | null; to?: number | null; result: MappingResult } }
+  | { type: 'regex'; options: { pattern: string; result: MappingResult } }
   | { type: 'special'; options: { match: 'null' | 'nan' | 'null+nan' | 'true' | 'false' | 'empty'; result: MappingResult } }
   | { type: string; options?: unknown };
 
