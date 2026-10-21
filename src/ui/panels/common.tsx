@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Text as SvgText } from 'react-native-svg';
+import type { FieldConfig } from '../../core/schema';
 import type { DataFrame } from '../../core/frame';
 import type { Panel } from '../../core/schema';
 import { useDashTheme } from '../theme';
@@ -34,6 +36,35 @@ export function Legend({ items }: { items: Array<{ key: string; name: string; co
         </View>
       ))}
     </View>
+  );
+}
+
+/** Room an axis title takes beside the left axis or below the x tick labels. */
+export const AXIS_TITLE_SPACE = 14;
+
+/** A field's `custom.axisLabel`, if it has a non-empty one. */
+export const axisTitle = (config: FieldConfig | undefined): string | undefined => (config?.custom?.axisLabel as string | undefined) || undefined;
+
+/**
+ * Axis titles for an SVG chart, as Grafana draws them: the y title turned to read upwards along the left edge,
+ * the x title centred under the tick labels. `plot` is the plotting area inside the padding.
+ */
+export function AxisTitles({ x, y, plot, height }: { x?: string; y?: string; plot: { left: number; top: number; width: number; height: number }; height: number }) {
+  const theme = useDashTheme();
+  const cy = plot.top + plot.height / 2;
+  return (
+    <>
+      {y && (
+        <SvgText x={9} y={cy} fontSize={10} fill={theme.textMuted} textAnchor="middle" transform={`rotate(-90 9 ${cy})`}>
+          {y}
+        </SvgText>
+      )}
+      {x && (
+        <SvgText x={plot.left + plot.width / 2} y={height - 3} fontSize={10} fill={theme.textMuted} textAnchor="middle">
+          {x}
+        </SvgText>
+      )}
+    </>
   );
 }
 

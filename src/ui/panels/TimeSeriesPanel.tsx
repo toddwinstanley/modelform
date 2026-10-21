@@ -5,9 +5,9 @@ import { formatValue } from '../../core/format';
 import { formatTimeTick, formatTooltipTime, linearScale, niceTicks, styledSeries, styledXYSeries, tickDecimals, yDomain, type StyledSeries } from '../chart';
 import { useDashboard } from '../context';
 import { useDashTheme } from '../theme';
-import { Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
+import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
 
-const PAD = { top: 8, right: 8, bottom: 20, left: 44 };
+const BASE_PAD = { top: 8, right: 8, bottom: 20, left: 44 };
 const BAR_MAX = 24;
 
 /**
@@ -31,6 +31,13 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const anyBars = series.some((s) => style(s) === 'bars');
   const anyFill = series.some((s) => (s.config.custom?.fillOpacity ?? 0) > 0);
 
+  const yTitle = series.map((s) => axisTitle(s.config)).find(Boolean);
+  const xTitle = numericX ? axisTitle(xConfig) : undefined;
+  const PAD = {
+    ...BASE_PAD,
+    left: BASE_PAD.left + (yTitle ? AXIS_TITLE_SPACE : 0),
+    bottom: BASE_PAD.bottom + (xTitle ? AXIS_TITLE_SPACE : 0),
+  };
   const plotW = Math.max(0, size.width - PAD.left - PAD.right);
   const plotH = Math.max(0, size.height - PAD.top - PAD.bottom);
 
@@ -79,7 +86,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
               <SvgText
                 key={t}
                 x={x(t)}
-                y={size.height - 5}
+                y={PAD.top + plotH + 15}
                 fontSize={10}
                 fill={theme.textMuted}
                 textAnchor={x(t) - PAD.left < 20 ? 'start' : PAD.left + plotW - x(t) < 20 ? 'end' : 'middle'}
@@ -87,6 +94,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
                 {xLabel(t)}
               </SvgText>
             ))}
+            <AxisTitles x={xTitle} y={yTitle} plot={{ left: PAD.left, top: PAD.top, width: plotW, height: plotH }} height={size.height} />
 
             {barSeries.map((s, si) =>
               s.times.map((t, i) => {

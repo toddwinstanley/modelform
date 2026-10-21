@@ -8,7 +8,7 @@ import type { Panel } from '../../core/schema';
 import { formatTooltipTime, linearScale, niceTicks, tickDecimals } from '../chart';
 import { useDashTheme } from '../theme';
 import { xyDomain, xySeries, type XYSeries } from '../xychart';
-import { Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
+import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
 
 const AXIS = { left: 44, bottom: 20 };
 const EDGE = 8;
@@ -28,7 +28,15 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
   const first = series[0];
   const showX = first?.xConfig.custom?.axisPlacement !== 'hidden';
   const showY = first?.yConfig.custom?.axisPlacement !== 'hidden';
-  const pad = { top: EDGE, right: EDGE, bottom: showX ? AXIS.bottom : EDGE, left: showY ? AXIS.left : EDGE };
+  // Grafana leaves a hidden axis untitled too.
+  const xTitle = showX ? axisTitle(first?.xConfig) : undefined;
+  const yTitle = showY ? axisTitle(first?.yConfig) : undefined;
+  const pad = {
+    top: EDGE,
+    right: EDGE,
+    bottom: (showX ? AXIS.bottom : EDGE) + (xTitle ? AXIS_TITLE_SPACE : 0),
+    left: (showY ? AXIS.left : EDGE) + (yTitle ? AXIS_TITLE_SPACE : 0),
+  };
   const plotW = Math.max(0, size.width - pad.left - pad.right);
   const plotH = Math.max(0, size.height - pad.top - pad.bottom);
 
@@ -40,8 +48,8 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
     const y = linearScale(y0, y1, pad.top + plotH, pad.top);
     const points = series.map((s) => ({ px: s.xs.map(x), py: s.ys.map(y) }));
     return { x, y, x0, x1, y0, y1, points, paths: series.map((s, i) => drawSeries(s, points[i].px, points[i].py)) };
-    // pad follows from showX and showY.
-  }, [series, plotW, plotH, showX, showY]);
+    // pad follows from showX, showY and the titles.
+  }, [series, plotW, plotH, showX, showY, xTitle, yTitle]);
 
   if (!first || !layout || series.every((s) => !s.rows.length)) return <NoData />;
 
@@ -78,7 +86,7 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
                 {gridX && <Line x1={layout.x(t)} x2={layout.x(t)} y1={pad.top} y2={pad.top + plotH} stroke={theme.grid} strokeWidth={1} />}
                 <SvgText
                   x={layout.x(t)}
-                  y={size.height - 5}
+                  y={pad.top + plotH + 15}
                   fontSize={10}
                   fill={theme.textMuted}
                   textAnchor={layout.x(t) - pad.left < 20 ? 'start' : pad.left + plotW - layout.x(t) < 20 ? 'end' : 'middle'}
@@ -87,6 +95,7 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
                 </SvgText>
               </G>
             ))}
+            <AxisTitles x={xTitle} y={yTitle} plot={{ left: pad.left, top: pad.top, width: plotW, height: plotH }} height={size.height} />
 
             {series.map((s, si) => (
               <G key={s.key}>
