@@ -122,6 +122,30 @@ const TRANSFORMERS: Record<string, Transformer> = {
         ],
       };
     }),
+  // Outer join of every frame on one field (default: each frame's time field), sorted by it, so
+  // series recorded at different times share one table. Rows a frame has no value for are null.
+  joinByField: (frames, { byField }: { byField?: string }) => {
+    const keyOf = (frame: DataFrame) =>
+      byField ? frame.fields.find((f) => f.name === byField || fieldDisplayName(f, frame, frames.length > 1) === byField) : frame.fields.find((f) => f.type === 'time');
+    const keyed = frames.map((frame) => ({ frame, key: keyOf(frame) })).filter((x): x is { frame: DataFrame; key: Field } => !!x.key);
+    if (keyed.length < 2) return frames;
+    const norm = (v: unknown, key: Field) => (key.type === 'time' ? toMillis(v) : v);
+    const keys = [...new Set(keyed.flatMap(({ key }) => key.values.map((v) => norm(v, key))))].sort((a: any, b: any) => (a < b ? -1 : a > b ? 1 : 0));
+    const first = keyed[0].key;
+    return [
+      {
+        fields: [
+          { ...first, values: keys },
+          ...keyed.flatMap(({ frame, key }) => {
+            const at = new Map(key.values.map((v, i) => [norm(v, key), i]));
+            return frame.fields
+              .filter((f) => f !== key)
+              .map((f) => ({ ...f, config: { displayName: fieldDisplayName(f, frame, frames.length > 1), ...f.config }, values: keys.map((k) => (at.has(k) ? f.values[at.get(k)!] : null)) }));
+          }),
+        ],
+      },
+    ];
+  },
   filterFieldsByName: (frames, { include, exclude }) => {
     const inc = nameMatcher(include);
     const exc = nameMatcher(exclude);

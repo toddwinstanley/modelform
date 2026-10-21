@@ -157,6 +157,27 @@ describe('local datasource', () => {
     ]);
   });
 
+  it('names text groups with the label option, keeping the text as the label value', async () => {
+    const store = new MemoryEntryStore(['t1', 't2', 't1'].map((text) => ({ metric: 'tire-session', ts: day(11), value: 1, text })));
+    const local = new LocalDataSource(store, { label: (metric, text) => (metric === 'tire-session' && text === 't1' ? 'Hoosier R7' : undefined) });
+    const frames = await local.query({ targets: [{ refId: 'A', metric: 'tire-session', groupBy: 'text', aggregate: 'sum', bucket: '1d', fillZero: false }], range, intervalMs: 0 } as any);
+    expect(frames.map((f) => [f.fields[1].config?.displayName, f.fields[1].labels, f.fields[1].values])).toEqual([
+      ['Hoosier R7', { 'tire-session': 't1' }, [2]],
+      ['t2', { 'tire-session': 't2' }, [1]],
+    ]);
+  });
+
+  it('fill: previous carries the value in effect at the range start through to the range end', async () => {
+    const store = new MemoryEntryStore([
+      { metric: 'sway', ts: day(1), value: 2, text: null },
+      { metric: 'sway', ts: day(5), value: 3, text: null },
+      { metric: 'sway', ts: day(11), value: 4, text: null },
+    ]);
+    const [frame] = await new LocalDataSource(store).query({ targets: [{ refId: 'A', metric: 'sway', fill: 'previous' }], range, intervalMs: 0 } as any);
+    expect(frame.fields[0].values).toEqual([range.from, day(11), Math.min(range.to, Date.now())]);
+    expect(frame.fields[1].values).toEqual([3, 4, 4]);
+  });
+
   it('runs end to end through queryPanel', async () => {
     const store = new MemoryEntryStore([{ metric: 'weight', ts: day(11), value: 80, text: null }]);
     const local = new LocalDataSource(store);

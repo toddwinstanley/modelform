@@ -113,7 +113,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
                   style(s) === 'points' ||
                   s.config.custom?.showPoints === 'always' ||
                   (s.config.custom?.showPoints !== 'never' && s.times.length <= plotW / 14);
-                const segs = segments(s, x, y);
+                const segs = segments(s, x, y, s.config.custom?.lineInterpolation === 'stepAfter');
                 return (
                   <G key={s.key}>
                     {fill > 0 &&
@@ -173,11 +173,13 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   );
 }
 
-function segments(s: StyledSeries, x: (v: number) => number, y: (v: number) => number) {
+/** Line paths, broken at nulls. With `step`, each value holds until the next point (Grafana's "stepAfter"). */
+function segments(s: StyledSeries, x: (v: number) => number, y: (v: number) => number, step = false) {
   const out: Array<{ d: string; firstX: number; lastX: number }> = [];
   let d = '';
   let firstX = 0;
   let lastX = 0;
+  let lastY = 0;
   s.times.forEach((t, i) => {
     const v = s.values[i];
     if (v == null) {
@@ -186,9 +188,11 @@ function segments(s: StyledSeries, x: (v: number) => number, y: (v: number) => n
       return;
     }
     const px = x(t);
+    const py = y(v);
     if (!d) firstX = px;
-    d += `${d ? 'L' : 'M'}${px},${y(v)}`;
+    d += !d ? `M${px},${py}` : step ? `L${px},${lastY}L${px},${py}` : `L${px},${py}`;
     lastX = px;
+    lastY = py;
   });
   if (d) out.push({ d, firstX, lastX });
   return out;

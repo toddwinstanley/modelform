@@ -158,3 +158,20 @@ describe('table sorting', () => {
     expect(initialSort(panel({ sortBy: [] }), cols)).toBeNull();
   });
 });
+
+describe('joinByField', () => {
+  it('outer joins frames on their time fields, keeping each series name', () => {
+    const series = (name: string, times: number[], values: number[]): DataFrame => ({
+      fields: [
+        { name: 'Time', type: 'time', values: times },
+        { name, type: 'number', values, config: { displayName: name } },
+      ],
+    });
+    const [joined] = applyTransformations([series('Hoosier', [1, 3], [2, 1]), series('Yokohama', [3, 5], [2, 4])], [{ id: 'joinByField' }]);
+    expect(joined.fields.map((f) => [f.config?.displayName ?? f.name, f.values])).toEqual([
+      ['Time', [1, 3, 5]],
+      ['Hoosier', [2, 1, null]],
+      ['Yokohama', [null, 2, 4]],
+    ]);
+  });
+});

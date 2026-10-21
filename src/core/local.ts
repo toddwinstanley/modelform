@@ -35,12 +35,29 @@ export interface LocalTarget extends Target {
   groupBy?: 'text';
   /** Fill empty buckets with 0. Defaults to true for sum/count. */
   fillZero?: boolean;
+  /**
+   * Raw points only: "previous" treats each value as holding until the next one, for settings
+   * recorded only when they change. The series starts at the range start with the value in
+   * effect then and ends at the range end (or now) with the latest value.
+   */
+  fill?: 'previous';
   /** Display name for the series. */
   alias?: string;
 }
 
+export interface LocalDataSourceOptions {
+  /**
+   * Display name for a `groupBy: "text"` series, for text that's an id into app data
+   * (e.g. a tire set id → its name). Return undefined to keep the text.
+   */
+  label?(metric: string, text: string): string | undefined;
+}
+
 export class LocalDataSource implements DataSource {
-  constructor(private readonly store: EntryStore) {}
+  constructor(
+    private readonly store: EntryStore,
+    private readonly options: LocalDataSourceOptions = {},
+  ) {}
 
   async query(request: QueryRequest): Promise<DataFrame[]> {
     const targets = request.targets as LocalTarget[];
@@ -49,11 +66,23 @@ export class LocalDataSource implements DataSource {
       from: request.range.from,
       to: request.range.to,
     });
-    return targets.flatMap((t) => buildFrames(t, entries.filter((e) => e.metric === t.metric), request));
+    // fill: previous also needs the value in effect when the range starts.
+    const carried = targets.filter((t) => t.fill === 'previous' && (t.aggregate ?? 'none') === 'none' && !t.groupBy).map((t) => t.metric);
+    const before = carried.length ? await this.store.list({ metrics: [...new Set(carried)], to: request.range.from - 1 }) : [];
+    return targets.flatMap((t) => {
+      const own = entries.filter((e) => e.metric === t.metric);
+      const prior = carried.includes(t.metric) ? before.filter((e) => e.metric === t.metric && e.value != null).at(-1) : undefined;
+      return buildFrames(t, prior ? [prior, ...own] : own, request, this.options.label);
+    });
   }
 }
 
-export function buildFrames(target: LocalTarget, entries: Entry[], request: Pick<QueryRequest, 'range' | 'intervalMs'>): DataFrame[] {
+export function buildFrames(
+  target: LocalTarget,
+  entries: Entry[],
+  request: Pick<QueryRequest, 'range' | 'intervalMs'>,
+  label?: LocalDataSourceOptions['label'],
+): DataFrame[] {
   const sorted = [...entries].sort((a, b) => a.ts - b.ts);
   const groups = new Map<string | undefined, Entry[]>();
   for (const e of sorted) {
@@ -69,24 +98,35 @@ export function buildFrames(target: LocalTarget, entries: Entry[], request: Pick
     let times: number[];
     let values: Array<number | null>;
     if (aggregate === 'none') {
-      times = rows.map((e) => e.ts);
-      values = rows.map((e) => e.value);
+      const points = rows.filter((e) => target.fill !== 'previous' || e.value != null);
+      times = points.map((e) => e.ts);
+      values = points.map((e) => e.value);
+      if (target.fill === 'previous' && group == null && values.length) {
+        const { from, to } = request.range;
+        if (times[0] < from) times[0] = from;
+        const end = Math.min(to, Date.now());
+        if (times[times.length - 1] < end) {
+          times.push(end);
+          values.push(values[values.length - 1]);
+        }
+      }
     } else {
       const bucket = !target.bucket || target.bucket === 'auto' ? request.intervalMs : target.bucket;
       const fill = target.fillZero ?? (aggregate === 'sum' || aggregate === 'count');
       ({ times, values } = bucketize(rows, aggregate, bucket, request.range, fill));
     }
+    const display = group == null ? name : label?.(target.metric, group) ?? group;
     return {
       name,
       refId: target.refId,
       fields: [
         { name: 'Time', type: 'time', values: times },
         {
-          name: group ?? name,
+          name: display,
           type: 'number',
           values,
           labels: group != null ? { [target.metric]: group } : undefined,
-          config: { displayName: group ?? name },
+          config: { displayName: display },
         },
       ],
     } satisfies DataFrame;
