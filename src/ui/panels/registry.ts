@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import type { PanelProps } from './common';
 import { BarGaugePanel, GaugePanel } from './GaugePanels';
+import { GeomapPanel } from './GeomapPanel';
 import { BarChartPanel, PieChartPanel, TablePanel, TextPanel, UnsupportedPanel } from './OtherPanels';
 import { StatPanel } from './StatPanel';
 import { TimeSeriesPanel } from './TimeSeriesPanel';
@@ -19,6 +20,7 @@ const registry: Record<string, ComponentType<PanelProps>> = {
   barchart: BarChartPanel,
   table: TablePanel,
   text: TextPanel,
+  geomap: GeomapPanel,
 };
 
 /** Add or replace a panel type, e.g. registerPanel('my-heatmap', HeatmapPanel). */

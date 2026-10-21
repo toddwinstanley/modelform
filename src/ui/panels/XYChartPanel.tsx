@@ -1,14 +1,11 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
-import { resolveFieldConfig } from '../../core/fieldconfig';
-import { fieldDisplayName, toMillis } from '../../core/frame';
-import { formatDisplay, formatValue } from '../../core/format';
-import type { Panel } from '../../core/schema';
-import { formatTooltipTime, linearScale, niceTicks, tickDecimals } from '../chart';
+import { formatValue } from '../../core/format';
+import { linearScale, niceTicks, tickDecimals } from '../chart';
 import { useDashTheme } from '../theme';
 import { xyDomain, xySeries, type XYSeries } from '../xychart';
-import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
+import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, RowTooltip, rowTooltipItems, showLegend, useLayout, type PanelProps } from './common';
 
 const AXIS = { left: 44, bottom: 20 };
 const EDGE = 8;
@@ -119,30 +116,13 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
           </Svg>
         )}
         {hover && (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.tooltip,
-              { backgroundColor: theme.surface, borderColor: theme.border },
-              hover.px > size.width / 2 ? { right: size.width - hover.px + 12 } : { left: hover.px + 12 },
-              hover.py > size.height / 2 ? { bottom: size.height - hover.py } : { top: hover.py },
-            ]}
-          >
-            <View style={styles.tooltipHead}>
-              <View style={[styles.dot, { backgroundColor: hover.series.colors[hover.index] }]} />
-              <Text style={[styles.tooltipTitle, { color: theme.text }]} numberOfLines={1}>
-                {hover.series.name}
-              </Text>
-            </View>
-            {tooltipRows(panel, hover.series, hover.series.rows[hover.index], frames.length > 1).map((r) => (
-              <View key={r.name} style={styles.tooltipRow}>
-                <Text style={[styles.tooltipName, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {r.name}
-                </Text>
-                <Text style={[styles.tooltipValue, { color: theme.text }]}>{r.value}</Text>
-              </View>
-            ))}
-          </View>
+          <RowTooltip
+            at={{ x: hover.px, y: hover.py }}
+            size={size}
+            color={hover.series.colors[hover.index]}
+            title={hover.series.name}
+            rows={rowTooltipItems(panel, hover.series.frame, hover.series.rows[hover.index], frames.length > 1)}
+          />
         )}
       </View>
       {showLegend(panel, legendItems.length) && <Legend items={legendItems} />}
@@ -185,39 +165,6 @@ function nearestPoint(series: XYSeries[], points: Array<{ px: number[]; py: numb
   return best as { series: XYSeries; index: number; px: number; py: number } | null;
 }
 
-/** Every field of the point's row, as Grafana's single-point tooltip shows it, except fields hidden from tooltips. */
-function tooltipRows(panel: Panel, s: XYSeries, row: number, multiple: boolean) {
-  return s.frame.fields.flatMap((f) => {
-    const name = fieldDisplayName(f, s.frame, multiple);
-    const config = resolveFieldConfig(panel, f, s.frame, name);
-    if ((config.custom?.hideFrom as { tooltip?: boolean } | undefined)?.tooltip) return [];
-    const v = f.values[row];
-    const value =
-      v == null ? '—' : f.type === 'number' ? formatDisplay(Number(v), config) : f.type === 'time' ? formatTooltipTime(toMillis(v)) : String(v);
-    return [{ name: config.displayName ?? name, value }];
-  });
-}
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  tooltip: {
-    position: 'absolute',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: 220,
-    minWidth: 140,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  tooltipHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  tooltipTitle: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  tooltipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tooltipName: { fontSize: 12, flexShrink: 1 },
-  tooltipValue: { fontSize: 12, fontWeight: '600', marginLeft: 'auto', paddingLeft: 8 },
 });
