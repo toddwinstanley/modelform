@@ -54,6 +54,7 @@ export interface FieldConfig {
   displayName?: string;
   color?: { mode?: string; fixedColor?: string };
   thresholds?: { mode?: 'absolute' | 'percentage'; steps: ThresholdStep[] };
+  mappings?: ValueMapping[];
   custom?: {
     drawStyle?: 'line' | 'bars' | 'points';
     lineWidth?: number;
@@ -62,6 +63,19 @@ export interface FieldConfig {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+/** Grafana value mappings: display text (and optionally a color) in place of a value. */
+export type ValueMapping =
+  | { type: 'value'; options: Record<string, MappingResult> }
+  | { type: 'range'; options: { from?: number | null; to?: number | null; result: MappingResult } }
+  | { type: 'special'; options: { match: 'null' | 'nan' | 'null+nan' | 'true' | 'false' | 'empty'; result: MappingResult } }
+  | { type: string; options?: unknown };
+
+export interface MappingResult {
+  text?: string;
+  color?: string;
+  index?: number;
 }
 
 export interface FieldOverride {

@@ -4,11 +4,13 @@ import { BarGaugePanel, GaugePanel } from './GaugePanels';
 import { BarChartPanel, PieChartPanel, TablePanel, TextPanel, UnsupportedPanel } from './OtherPanels';
 import { StatPanel } from './StatPanel';
 import { TimeSeriesPanel } from './TimeSeriesPanel';
+import { XYChartPanel } from './XYChartPanel';
 
 const registry: Record<string, ComponentType<PanelProps>> = {
   timeseries: TimeSeriesPanel,
   graph: TimeSeriesPanel,
   trend: TimeSeriesPanel,
+  xychart: XYChartPanel,
   stat: StatPanel,
   singlestat: StatPanel,
   gauge: GaugePanel,

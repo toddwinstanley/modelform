@@ -1,4 +1,4 @@
-import type { FieldConfig, ThresholdStep } from './schema';
+import type { FieldConfig, MappingResult, ThresholdStep } from './schema';
 
 /** Value formatting for the Grafana units people actually use. Unknown units fall back to "short". */
 export function formatValue(value: number | null | undefined, config: FieldConfig = {}): string {
@@ -185,4 +185,82 @@ export function seriesColor(index: number, scheme: 'light' | 'dark', config?: Fi
   const color = palette[index % palette.length];
   if (config?.color?.mode === 'fixed') return resolveColor(config.color.fixedColor, color);
   return color;
+}
+
+/** The text a value mapping gives a value, if any. Supports value, range and special mappings. */
+export function mappedResult(value: unknown, config: FieldConfig = {}): MappingResult | undefined {
+  for (const m of config.mappings ?? []) {
+    if (m.type === 'value') {
+      const hit = (m.options as Record<string, MappingResult>)[String(value)];
+      if (hit) return hit;
+    } else if (m.type === 'range') {
+      const { from, to, result } = m.options as { from?: number | null; to?: number | null; result: MappingResult };
+      const v = Number(value);
+      if (value != null && !Number.isNaN(v) && (from == null || v >= from) && (to == null || v <= to)) return result;
+    } else if (m.type === 'special') {
+      const { match, result } = m.options as { match: string; result: MappingResult };
+      const isNull = value == null;
+      const isNaN = typeof value === 'number' && Number.isNaN(value);
+      if (
+        (match === 'null' && isNull) ||
+        (match === 'nan' && isNaN) ||
+        (match === 'null+nan' && (isNull || isNaN)) ||
+        (match === 'empty' && value === '') ||
+        (match === 'true' && value === true) ||
+        (match === 'false' && value === false)
+      )
+        return result;
+    }
+  }
+  return undefined;
+}
+
+/** formatValue, with the field's value mappings applied first. */
+export function formatDisplay(value: number | null | undefined, config: FieldConfig = {}): string {
+  return mappedResult(value, config)?.text ?? formatValue(value, config);
+}
+
+/** Grafana's continuous color schemes, as stops from the low end to the high end. */
+const CONTINUOUS: Record<string, string[]> = {
+  'continuous-GrYlRd': ['#73BF69', '#FADE2A', '#F2495C'],
+  'continuous-RdYlGr': ['#F2495C', '#FADE2A', '#73BF69'],
+  'continuous-BlYlRd': ['#5794F2', '#FADE2A', '#F2495C'],
+  'continuous-YlRd': ['#FADE2A', '#F2495C'],
+  'continuous-BlPu': ['#5794F2', '#B877D9'],
+  'continuous-YlBl': ['#FADE2A', '#5794F2'],
+  'continuous-blues': ['#C0D8FF', '#1F60C4'],
+  'continuous-reds': ['#FFA6B0', '#C4162A'],
+  'continuous-greens': ['#C8F2C2', '#37872D'],
+  'continuous-purples': ['#DEB6F2', '#8F3BB8'],
+};
+
+function mix(a: string, b: string, t: number): string {
+  const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const out = [0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t));
+  return `#${out.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * The color a field's config gives one value: a mapping's color, the fixed color, the matching threshold, or a
+ * continuous scheme between min and max (from config, else `extent`). Other modes use `fallback`.
+ */
+export function valueColor(value: number | null, config: FieldConfig, fallback: string, extent?: [number, number]): string {
+  const mapped = mappedResult(value, config)?.color;
+  if (mapped) return resolveColor(mapped, fallback);
+  const mode = config.color?.mode;
+  if (mode === 'fixed') return resolveColor(config.color?.fixedColor, fallback);
+  const stops = mode ? CONTINUOUS[mode] : undefined;
+  if (stops) {
+    const min = config.min ?? extent?.[0] ?? 0;
+    const max = config.max ?? extent?.[1] ?? 1;
+    const t = value == null ? 0 : Math.min(1, Math.max(0, (value - min) / (max - min || 1)));
+    const at = t * (stops.length - 1);
+    const i = Math.min(Math.floor(at), stops.length - 2);
+    return mix(stops[i], stops[i + 1], at - i);
+  }
+  if (mode === 'thresholds' || (!mode && config.thresholds)) {
+    const step = thresholdStep(value, config);
+    if (step) return resolveColor(step.color, fallback);
+  }
+  return fallback;
 }

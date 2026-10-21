@@ -8,13 +8,14 @@ import type { FieldConfig, Panel } from './schema';
 export function resolveFieldConfig(panel: Panel, field: Field, frame: DataFrame, displayName: string): FieldConfig {
   let config: FieldConfig = mergeConfig(panel.fieldConfig?.defaults ?? {}, field.config ?? {});
   for (const o of panel.fieldConfig?.overrides ?? []) {
-    if (!matches(o.matcher, field, frame, displayName)) continue;
+    if (!fieldMatches(o.matcher, field, frame, displayName)) continue;
     for (const p of o.properties) config = setPath(config, p.id, p.value);
   }
   return config;
 }
 
-function matches(matcher: { id: string; options?: unknown }, field: Field, frame: DataFrame, displayName: string) {
+/** Whether a Grafana field matcher (byName, byRegexp, byFrameRefID, byType) selects this field. */
+export function fieldMatches(matcher: { id: string; options?: unknown }, field: Field, frame: DataFrame, displayName: string) {
   const opt = matcher.options;
   switch (matcher.id) {
     case 'byName':
