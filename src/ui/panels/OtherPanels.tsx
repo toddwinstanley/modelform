@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
-import { barCategory, categoryLabels, reducedValues } from '../chart';
+import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
 
@@ -115,46 +115,104 @@ export function TextPanel({ panel }: PanelProps) {
 
 /**
  * Grafana "barchart": one group of bars per category, one bar per numeric field. Categories come from `xField`,
- * else the first string field, else the first time field, as in Grafana.
+ * else the first string field, else the first time field, as in Grafana. Fields placed on the right axis
+ * (`custom.axisPlacement: "right"`) get their own scale there.
  */
 export function BarChartPanel({ panel, frames, width }: PanelProps) {
   const theme = useDashTheme();
+  const [plot, onPlotLayout] = useLayout();
   const values = useMemo(() => reducedValues(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
   const frame = frames[0];
   const category = frame && barCategory(panel, frame);
   if (!frame || !values.length) return <NoData />;
 
-  // Without a category field, show one bar per series using the reduced value.
-  const labels = category ? categoryLabels(category) : values.map((v) => v.name);
   const allNumeric = frame.fields.filter((f) => f.type === 'number');
+  const at = (f: (typeof allNumeric)[number]) => values[allNumeric.indexOf(f)];
+  // Without a category field, show one bar per series using the reduced value.
   const numeric = category ? allNumeric.filter((f) => f !== category) : [];
-  const colorOf = (f: (typeof allNumeric)[number]) => values[allNumeric.indexOf(f)]?.color ?? theme.accent;
-  const bars = category
-    ? labels.map((label, i) => ({ label, values: numeric.map((f) => ({ v: Number(f.values[i] ?? 0), color: colorOf(f) })) }))
-    : values.map((v) => ({ label: v.name, values: [{ v: v.value ?? 0, color: v.color }] }));
-  const max = Math.max(...bars.flatMap((b) => b.values.map((x) => x.v)), 0) || 1;
+  const fields = category
+    ? numeric.map((f) => ({ key: f.name, name: at(f)?.name ?? f.name, color: at(f)?.color ?? theme.accent, config: at(f)?.config ?? {}, values: f.values.map(num) }))
+    : [{ key: 'reduced', name: '', color: theme.accent, config: values[0].config, values: values.map((v) => v.value) }];
+  const labels = category ? categoryLabels(category) : values.map((v) => v.name);
+  const colorAt = (fi: number, i: number) => (category ? fields[fi].color : values[i].color);
+
+  const axes = barAxes(
+    fields.map((f) => f.config),
+    fields.map((f) => f.values),
+    plot.height < 100 ? 2 : 4,
+  );
+  const axisOf = (fi: number) => axes.find((a) => a.fields.includes(fi))!;
+  const left = axes.find((a) => a.side === 'left' && a.show);
+  const right = axes.find((a) => a.side === 'right' && a.show);
+  const gridAxis = left ?? right;
   // Label every nth group so labels get ~44px each; a month of days would otherwise be unreadable.
-  const every = Math.max(1, Math.ceil(bars.length / Math.max(1, Math.floor(width / 44))));
+  const plotW = width - (left ? AXIS_W : 0) - (right ? AXIS_W : 0);
+  const every = Math.max(1, Math.ceil(labels.length / Math.max(1, Math.floor(plotW / 44))));
+
+  const axisColumn = (axis: BarAxis) => (
+    <View style={[styles.axis, axis.side === 'left' ? styles.axisLeft : styles.axisRight]}>
+      {plot.height > 0 &&
+        axis.ticks.map((t) => (
+          <Text
+            key={t}
+            style={[styles.tick, { color: theme.textMuted, top: plot.height * (1 - t / axis.top) - 7 }, axis.side === 'left' ? styles.tickLeft : styles.tickRight]}
+            numberOfLines={1}
+          >
+            {formatValue(t, { ...axis.config, decimals: tickDecimals(axis.ticks) })}
+          </Text>
+        ))}
+    </View>
+  );
 
   return (
     <View style={styles.fill}>
-      <View style={styles.barchart}>
-        {bars.map((b, i) => (
-          <View key={i} style={styles.barGroup}>
-            <View style={styles.barStack}>
-              {b.values.map((x, xi) => (
-                <View key={xi} style={[styles.bar, { height: `${(Math.max(x.v, 0) / max) * 100}%`, backgroundColor: x.color }]} />
-              ))}
-            </View>
-            <Text style={[styles.barLabel, { color: theme.textMuted }]} numberOfLines={1}>
-              {i % every === 0 ? b.label : ' '}
-            </Text>
+      {(left?.label || right?.label) && (
+        <View style={styles.axisLabels}>
+          <Text style={[styles.axisLabel, { color: theme.textMuted }]}>{left?.label ?? ''}</Text>
+          <Text style={[styles.axisLabel, { color: theme.textMuted }]}>{right?.label ?? ''}</Text>
+        </View>
+      )}
+      <View style={styles.barRow}>
+        {left && axisColumn(left)}
+        <View style={styles.fill} onLayout={onPlotLayout}>
+          {gridAxis &&
+            plot.height > 0 &&
+            gridAxis.ticks.map((t) => (
+              <View key={t} style={[styles.gridLine, { backgroundColor: theme.grid, top: plot.height * (1 - t / gridAxis.top) }]} />
+            ))}
+          <View style={styles.barchart}>
+            {labels.map((_, i) => (
+              <View key={i} style={styles.barStack}>
+                {fields.map((f, fi) => (
+                  <View
+                    key={fi}
+                    style={[styles.bar, { height: `${(Math.max(f.values[i] ?? 0, 0) / (axisOf(fi).top || 1)) * 100}%`, backgroundColor: colorAt(fi, i) }]}
+                  />
+                ))}
+              </View>
+            ))}
           </View>
+        </View>
+        {right && axisColumn(right)}
+      </View>
+      <View style={[styles.barLabels, { marginLeft: left ? AXIS_W : 0, marginRight: right ? AXIS_W : 0 }]}>
+        {labels.map((label, i) => (
+          <Text key={i} style={[styles.barLabel, { color: theme.textMuted }]} numberOfLines={1}>
+            {i % every === 0 ? label : ' '}
+          </Text>
         ))}
       </View>
-      {numeric.length > 1 && <Legend items={numeric.map((f) => ({ key: f.name, name: f.config?.displayName ?? f.name, color: colorOf(f) }))} />}
+      {category && fields.length > 1 && <Legend items={fields} />}
     </View>
   );
+}
+
+const AXIS_W = 40;
+
+function num(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function UnsupportedPanel({ panel }: PanelProps) {
@@ -169,9 +227,20 @@ const styles = StyleSheet.create({
   num: { textAlign: 'right', fontVariant: ['tabular-nums'] },
   para: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
   heading: { fontSize: 16, fontWeight: '600' },
-  barchart: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  barGroup: { flex: 1, height: '100%', alignItems: 'center' },
-  barStack: { flex: 1, width: '100%', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2 },
+  // Room for half of the top tick label, which is centred on the plot's top edge.
+  barRow: { flex: 1, flexDirection: 'row', paddingTop: 7 },
+  barchart: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  barStack: { flex: 1, height: '100%', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2 },
   bar: { flex: 1, maxWidth: 24, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  barLabel: { fontSize: 10, marginTop: 4 },
+  barLabels: { flexDirection: 'row', gap: 2 },
+  barLabel: { flex: 1, fontSize: 10, marginTop: 4, textAlign: 'center' },
+  gridLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },
+  axis: { width: AXIS_W },
+  axisLeft: { paddingRight: 6 },
+  axisRight: { paddingLeft: 6 },
+  tick: { position: 'absolute', fontSize: 10, lineHeight: 14 },
+  tickLeft: { right: 6, textAlign: 'right' },
+  tickRight: { left: 6 },
+  axisLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  axisLabel: { fontSize: 10 },
 });

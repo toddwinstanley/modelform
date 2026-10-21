@@ -64,6 +64,52 @@ export function categoryLabels(field: Field): string[] {
   });
 }
 
+export interface BarAxis {
+  side: 'left' | 'right';
+  /** Indexes of the fields scaled against this axis. */
+  fields: number[];
+  ticks: number[];
+  /** The value at the top of the plot. */
+  top: number;
+  /** Config of the axis's first field, for tick formatting. */
+  config: FieldConfig;
+  /** `custom.axisLabel` of the axis's first field that has one. */
+  label?: string;
+  /** False when every field on the axis has `custom.axisPlacement: "hidden"`. */
+  show: boolean;
+}
+
+/**
+ * Bar chart y axes. Fields with `custom.axisPlacement: "right"` share a right axis with its own scale; every other
+ * field shares the left one. Each axis runs from 0 (or min) to a round number above its tallest bar (or max).
+ */
+export function barAxes(configs: FieldConfig[], values: Array<Array<number | null>>, tickCount: number): BarAxis[] {
+  const placement = (c: FieldConfig) => c.custom?.axisPlacement as string | undefined;
+  const sides: Array<'left' | 'right'> = ['left', 'right'];
+  return sides.flatMap((side) => {
+    const fields = configs.map((_, i) => i).filter((i) => (placement(configs[i]) === 'right') === (side === 'right'));
+    if (!fields.length) return [];
+    const config = configs[fields[0]];
+    const max = Math.max(0, ...fields.flatMap((i) => values[i].map((v) => v ?? 0)));
+    const min = Math.min(0, config.min ?? 0);
+    // An empty or all-zero axis still gets a 0..1 scale rather than ticks around zero.
+    const ticks = niceTicks(min, config.max ?? Math.max(max, min + 1), tickCount);
+    const top = config.max ?? ticks[ticks.length - 1];
+    return [
+      {
+        side,
+        fields,
+        // A max that isn't a round number cuts the top tick off rather than drawing it above the plot.
+        ticks: ticks.filter((t) => t <= top),
+        top,
+        config,
+        label: fields.map((i) => configs[i].custom?.axisLabel as string | undefined).find((l) => !!l),
+        show: fields.some((i) => placement(configs[i]) !== 'hidden'),
+      },
+    ];
+  });
+}
+
 export function formatTooltipTime(t: number): string {
   return new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
