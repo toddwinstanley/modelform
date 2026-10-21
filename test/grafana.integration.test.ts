@@ -56,10 +56,11 @@ describe.skipIf(!url || !token)('grafana integration', () => {
       // Laid out as the app does, so repeated rows and panels are queried once per copy.
       const sections = layoutDashboard(dashboard, 'grid', { values: vars.values, info });
       const panels = sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map((c) => c.panel)));
+      const shared = new Map();
       for (const panel of panels) {
         if (!panel.targets?.length) continue;
         try {
-          const frames = await queryPanel(panel, { resolve: () => ds, range, variables: vars.values, variableInfo: info, widthPx: 400 });
+          const frames = await queryPanel(panel, { resolve: () => ds, range, variables: vars.values, variableInfo: info, widthPx: 400, dashboard, shared });
           queried++;
           console.log(`${dashboard.title} / ${panel.title}: ${frames.length} frames, ${toSeries(frames).length} series`);
         } catch (e: any) {

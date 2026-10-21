@@ -8,6 +8,7 @@ export * from './reduce';
 export * from './format';
 export * from './fieldconfig';
 export * from './datasource';
+export * from './transform';
 export * from './grafana';
 export * from './inputs';
 export * from './local';

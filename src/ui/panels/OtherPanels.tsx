@@ -113,19 +113,22 @@ export function TextPanel({ panel }: PanelProps) {
   );
 }
 
-/** Grafana "barchart": categories from the first string field (or time), grouped bars per numeric field. */
+/** Grafana "barchart": categories from `xField` or the first string field, grouped bars per numeric field. */
 export function BarChartPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const values = useMemo(() => reducedValues(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
   const frame = frames[0];
-  const category = frame?.fields.find((f) => f.type === 'string');
+  const xField: string | undefined = panel.options?.xField;
+  const category = frame?.fields.find((f) => (xField ? f.name === xField : f.type === 'string'));
   if (!frame || !values.length) return <NoData />;
 
   // Without a category field, show one bar per series using the reduced value.
   const labels = category ? category.values.map(String) : values.map((v) => v.name);
-  const numeric = category ? frame.fields.filter((f) => f.type === 'number') : [];
+  const allNumeric = frame.fields.filter((f) => f.type === 'number');
+  const numeric = category ? allNumeric.filter((f) => f !== category) : [];
+  const colorOf = (f: (typeof allNumeric)[number]) => values[allNumeric.indexOf(f)]?.color ?? theme.accent;
   const bars = category
-    ? labels.map((label, i) => ({ label, values: numeric.map((f, fi) => ({ v: Number(f.values[i] ?? 0), color: values[fi]?.color ?? theme.accent })) }))
+    ? labels.map((label, i) => ({ label, values: numeric.map((f) => ({ v: Number(f.values[i] ?? 0), color: colorOf(f) })) }))
     : values.map((v) => ({ label: v.name, values: [{ v: v.value ?? 0, color: v.color }] }));
   const max = Math.max(...bars.flatMap((b) => b.values.map((x) => x.v)), 0) || 1;
 

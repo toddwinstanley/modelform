@@ -88,6 +88,8 @@ export interface Panel {
   targets?: Target[];
   fieldConfig?: { defaults?: FieldConfig; overrides?: FieldOverride[] };
   options?: Record<string, any>;
+  /** Applied in order to the query results. See transform.ts for the ones dashkit implements. */
+  transformations?: Array<{ id: string; options?: Record<string, any>; disabled?: boolean }>;
   /** Rows only. */
   collapsed?: boolean;
   /** Rows only: children of a collapsed row live here instead of at the top level. */

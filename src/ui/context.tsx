@@ -24,6 +24,8 @@ interface DashboardState {
   setVariable(name: string, value: string | string[]): void;
   refresh(): void;
   refreshKey: number;
+  /** Results that `-- Dashboard --` panels reuse; a new map whenever the range or variables change. */
+  shared: Map<string, Promise<DataFrame[]>>;
 }
 
 const Ctx = createContext<DashboardState | null>(null);
@@ -59,6 +61,7 @@ export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey 
   // Both counters only ever increase, so their sum changes whenever either does.
   const refreshKey = tick + externalKey;
   const range = useMemo(() => parseRange(rawRange), [rawRange, refreshKey]);
+  const shared = useMemo(() => new Map<string, Promise<DataFrame[]>>(), [range, vars.variables, vars.variableInfo]);
 
   const value = useMemo<DashboardState>(
     () => ({
@@ -70,8 +73,9 @@ export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey 
       ...vars,
       refresh,
       refreshKey,
+      shared,
     }),
-    [dashboard, resolve, rawRange, range, vars, refresh, refreshKey],
+    [dashboard, resolve, rawRange, range, vars, refresh, refreshKey, shared],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -191,7 +195,7 @@ export interface PanelData {
 }
 
 export function usePanelData(panel: Panel, widthPx: number, enabled = true): PanelData {
-  const { resolve, range, variables, variableInfo, variablesReady } = useDashboard();
+  const { dashboard, resolve, range, variables, variableInfo, variablesReady, shared } = useDashboard();
   const [state, setState] = useState<PanelData>({ frames: [], loading: enabled });
   // Width only matters coarsely (it sets maxDataPoints); avoid re-querying on every pixel of resize.
   const widthBucket = Math.ceil(widthPx / 100) * 100;
@@ -205,11 +209,11 @@ export function usePanelData(panel: Panel, widthPx: number, enabled = true): Pan
     setState((s) => ({ ...s, loading: true }));
     if (!variablesReady) return;
     const controller = new AbortController();
-    queryPanel(panel, { resolve, range, variables, variableInfo, widthPx: widthBucket }, controller.signal)
+    queryPanel(panel, { resolve, range, variables, variableInfo, widthPx: widthBucket, dashboard, shared }, controller.signal)
       .then((frames) => !controller.signal.aborted && setState({ frames, loading: false }))
       .catch((e) => !controller.signal.aborted && setState({ frames: [], loading: false, error: String(e?.message ?? e) }));
     return () => controller.abort();
-  }, [enabled, panel, resolve, range, variables, variableInfo, variablesReady, widthBucket]);
+  }, [enabled, panel, resolve, range, variables, variableInfo, variablesReady, widthBucket, dashboard, shared]);
 
   return state;
 }
