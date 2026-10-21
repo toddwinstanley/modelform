@@ -131,33 +131,43 @@ const NAMED: Record<string, string> = {
   'semi-dark-green': '#56A64B',
   'dark-green': '#37872D',
   'light-green': '#96D98D',
+  'super-light-green': '#C8F2C2',
   red: '#F2495C',
   'semi-dark-red': '#E02F44',
   'dark-red': '#C4162A',
   'light-red': '#FF7383',
+  'super-light-red': '#FFA6B0',
   yellow: '#FADE2A',
   'semi-dark-yellow': '#F2CC0C',
   'dark-yellow': '#E0B400',
   'light-yellow': '#FFEE52',
+  'super-light-yellow': '#FFF899',
   orange: '#FF9830',
   'semi-dark-orange': '#FF780A',
   'dark-orange': '#FA6400',
   'light-orange': '#FFB357',
+  'super-light-orange': '#FFCB7D',
   blue: '#5794F2',
   'semi-dark-blue': '#3274D9',
   'dark-blue': '#1F60C4',
   'light-blue': '#8AB8FF',
+  'super-light-blue': '#C0D8FF',
   purple: '#B877D9',
   'semi-dark-purple': '#A352CC',
   'dark-purple': '#8F3BB8',
   'light-purple': '#CA95E5',
+  'super-light-purple': '#DEB6F2',
   text: '#888888',
   transparent: 'transparent',
 };
 
+/** Colors React Native accepts as-is: hex, rgb()/hsl(), and plain CSS names like `white`. */
+const PASSTHROUGH = /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\(.*\)|[a-z]+)$/i;
+
 export function resolveColor(name: string | undefined, fallback: string): string {
   if (!name) return fallback;
-  return NAMED[name] ?? name;
+  // An unrecognised Grafana name would throw in React Native, so fall back instead.
+  return NAMED[name] ?? (PASSTHROUGH.test(name) ? name : fallback);
 }
 
 /**
@@ -170,8 +180,9 @@ export const SERIES_PALETTE = {
 };
 
 export function seriesColor(index: number, scheme: 'light' | 'dark', config?: FieldConfig): string {
-  if (config?.color?.mode === 'fixed' && config.color.fixedColor) return resolveColor(config.color.fixedColor, '#888');
   const palette = SERIES_PALETTE[scheme];
   // Past the palette, reuse is unavoidable; the legend still carries identity.
-  return palette[index % palette.length];
+  const color = palette[index % palette.length];
+  if (config?.color?.mode === 'fixed') return resolveColor(config.color.fixedColor, color);
+  return color;
 }
