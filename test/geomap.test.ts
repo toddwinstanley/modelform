@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { DataFrame, Panel } from '../src/core';
+import { DEFAULT_GAZETTEER, GrafanaClient, GrafanaDataSource, loadGazetteer, parseGazetteer, type DataFrame, type DataSource, type Panel } from '../src/core';
 import {
   decodeGeohash,
+  gazetteerPaths,
   geomapLayers,
   heatmapCells,
   initialView,
@@ -198,5 +199,87 @@ describe('geomap heatmap', () => {
     expect(hottest.d).toMatch(/M(16|20),(16|20)h4/);
     expect(cells.some((c) => c.d.includes('M0,96h4'))).toBe(false);
     expect(heatmapCells([], [], [], 5, 15, 100, 100)).toEqual([]);
+  });
+});
+
+describe('geomap gazetteer lookups', () => {
+  const countries = parseGazetteer([
+    { keys: ['US', 'USA'], latitude: 37.09, longitude: -95.71, name: 'United States' },
+    { key: 'FR', latitude: 46.23, longitude: 2.21, name: 'France' },
+    { key: 'XX', name: 'No coordinates' },
+  ]);
+  const sales: DataFrame = {
+    refId: 'A',
+    fields: [
+      { name: 'country', type: 'string', values: ['US', 'fr', 'Atlantis', null, 'United States'] },
+      { name: 'total', type: 'number', values: [5, 3, 1, 1, 2] },
+    ],
+  };
+
+  it('reads key lists, names and GeoJSON, matching exactly and then ignoring case', () => {
+    expect(countries.find('USA')).toEqual({ lon: -95.71, lat: 37.09 });
+    expect(countries.find('france')).toEqual({ lon: 2.21, lat: 46.23 });
+    expect(countries.find('XX')).toBeUndefined();
+    const airports = parseGazetteer({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [21.63, 41.96] }, properties: { name: 'Skopje', iata_code: 'SKP', natlscale: 10 } },
+        { type: 'Feature', id: 'box', geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 20], [0, 0]]] }, properties: {} },
+      ],
+    });
+    expect(airports.find('SKP')).toEqual({ lon: 21.63, lat: 41.96 });
+    expect(airports.find('10')).toBeUndefined();
+    expect(airports.find('box')).toEqual({ lon: 5, lat: 10 });
+  });
+
+  it('locates rows by a lookup field, skipping places the gazetteer lacks', () => {
+    const location = { mode: 'lookup', lookup: 'country', gazetteer: 'public/gazetteer/countries.json' };
+    const l = locate(sales, location, { 'public/gazetteer/countries.json': countries })!;
+    expect(l.rows).toEqual([0, 1, 4]);
+    expect(l.xs[1]).toBeCloseTo(project(2.21, 46.23)[0], 12);
+    // Until the gazetteer loads there's nothing to place.
+    expect(locate(sales, location)).toBeUndefined();
+  });
+
+  it('lists the gazetteers a panel needs, including auto layers with a lookup field', () => {
+    const lookup = panel({ layers: [{ type: 'markers', location: { mode: 'lookup', lookup: 'country', gazetteer: 'public/gazetteer/usa-states.json' } }, { type: 'heatmap', location: { mode: 'lookup' } }] });
+    expect(gazetteerPaths(lookup, [sales])).toEqual(['public/gazetteer/usa-states.json', DEFAULT_GAZETTEER]);
+    const withLookup: DataFrame = { fields: [{ name: 'Lookup', type: 'string', values: ['FR'] }] };
+    expect(gazetteerPaths(panel({}), [sales])).toEqual([]);
+    expect(gazetteerPaths(panel({}), [withLookup])).toEqual([DEFAULT_GAZETTEER]);
+    const [, markers] = geomapLayers(panel({}), [withLookup], 'light', false, { [DEFAULT_GAZETTEER]: countries });
+    expect((markers as MarkersLayer).points[0].rows).toEqual([0]);
+  });
+
+  it('loads a gazetteer once per datasource, retrying after a failure', async () => {
+    let calls = 0;
+    let fail = true;
+    const ds: DataSource = {
+      query: async () => [],
+      publicFile: async (path) => {
+        calls++;
+        if (fail) throw new Error('offline');
+        expect(path).toBe('public/gazetteer/test.json');
+        return [{ key: 'FR', latitude: 46.23, longitude: 2.21 }];
+      },
+    };
+    await expect(loadGazetteer('public/gazetteer/test.json', ds)).rejects.toThrow('offline');
+    fail = false;
+    const [a, b] = await Promise.all([loadGazetteer('public/gazetteer/test.json', ds), loadGazetteer('public/gazetteer/test.json', ds)]);
+    expect(a).toBe(b);
+    expect(a.find('FR')).toEqual({ lon: 2.21, lat: 46.23 });
+    expect(calls).toBe(2);
+    await expect(loadGazetteer('public/gazetteer/test.json')).rejects.toThrow('no Grafana connection');
+  });
+
+  it('fetches gazetteers from Grafana relative to its URL', async () => {
+    const urls: string[] = [];
+    const client = new GrafanaClient({
+      url: 'https://grafana.example/',
+      token: 't',
+      fetch: (async (url: string) => (urls.push(url), new Response('[]'))) as typeof fetch,
+    });
+    await new GrafanaDataSource(client).publicFile('public/gazetteer/usa-states.json');
+    expect(urls).toEqual(['https://grafana.example/public/gazetteer/usa-states.json']);
   });
 });

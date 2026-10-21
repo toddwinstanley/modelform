@@ -1,7 +1,13 @@
-import { useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Image, PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import { normalizeRef, type DataSource } from '../../core/datasource';
+import type { DataFrame } from '../../core/frame';
+import { loadGazetteer, type Gazetteer } from '../../core/gazetteer';
+import type { Panel } from '../../core/schema';
+import { useDashboard } from '../context';
 import {
+  gazetteerPaths,
   geomapLayers,
   heatmapCells,
   initialView,
@@ -45,7 +51,8 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const [size, onLayout] = useLayout();
   const retina = PixelRatio.get() > 1;
-  const layers = useMemo(() => geomapLayers(panel, frames, theme.scheme, retina), [panel, frames, theme.scheme, retina]);
+  const { gazetteers, error } = useGazetteers(panel, frames);
+  const layers = useMemo(() => geomapLayers(panel, frames, theme.scheme, retina, gazetteers), [panel, frames, theme.scheme, retina, gazetteers]);
   const home = useMemo(() => initialView(panel, layers, size.width, size.height), [panel, layers, size.width, size.height]);
   // Set once the map is panned or zoomed; until then the view follows the data (for "fit").
   const [moved, setMoved] = useState<MapView | null>(null);
@@ -179,6 +186,11 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
             {moved && <MapButton label="⟲" onPress={() => setMoved(null)} />}
           </View>
         )}
+        {error ? (
+          <Text pointerEvents="none" style={[styles.error, { color: theme.danger, backgroundColor: theme.surface }]} numberOfLines={2}>
+            {error}
+          </Text>
+        ) : null}
         {controls.showAttribution !== false && attribution ? (
           <Text pointerEvents="none" style={[styles.attribution, { color: theme.textSecondary, backgroundColor: theme.surface }]} numberOfLines={1}>
             {attribution}
@@ -188,6 +200,38 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
       {legend.length > 0 && <Legend items={legend} />}
     </View>
   );
+}
+
+const NONE: Record<string, Gazetteer> = {};
+
+/** The gazetteers the panel's lookup layers need, loaded from the panel's Grafana, and why any failed. */
+function useGazetteers(panel: Panel, frames: DataFrame[]): { gazetteers: Record<string, Gazetteer>; error?: string } {
+  const { resolve } = useDashboard();
+  const key = gazetteerPaths(panel, frames).join('\n');
+  const [state, setState] = useState<{ key: string; gazetteers: Record<string, Gazetteer>; error?: string }>({ key: '', gazetteers: NONE });
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    let ds: DataSource | undefined;
+    try {
+      ds = resolve?.(normalizeRef(panel.datasource));
+    } catch {}
+    const paths = key.split('\n');
+    Promise.allSettled(paths.map((p) => loadGazetteer(p, ds))).then((results) => {
+      if (!live) return;
+      const gazetteers: Record<string, Gazetteer> = {};
+      const errors: string[] = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') gazetteers[paths[i]] = r.value;
+        else errors.push(`Couldn't load ${paths[i]}: ${r.reason?.message ?? r.reason}`);
+      });
+      setState({ key, gazetteers, error: errors.join('\n') || undefined });
+    });
+    return () => {
+      live = false;
+    };
+  }, [key, resolve, panel.datasource]);
+  return state.key === key ? state : { gazetteers: NONE };
 }
 
 function MapButton({ label, onPress }: { label: string; onPress: () => void }) {
@@ -318,5 +362,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonText: { fontSize: 16, fontWeight: '600', lineHeight: 18 },
+  error: { position: 'absolute', top: 6, left: 40, right: 6, fontSize: 11, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 },
   attribution: { position: 'absolute', right: 0, bottom: 0, fontSize: 9, paddingHorizontal: 4, paddingVertical: 1, opacity: 0.85, maxWidth: '100%' },
 });

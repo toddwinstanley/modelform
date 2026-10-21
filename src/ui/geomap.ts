@@ -1,6 +1,7 @@
 import { resolveFieldConfig } from '../core/fieldconfig';
 import { fieldDisplayName, toMillis, type DataFrame, type Field } from '../core/frame';
 import { formatDisplay, formatValue, resolveColor, valueColor } from '../core/format';
+import { DEFAULT_GAZETTEER, type Gazetteer } from '../core/gazetteer';
 import type { FieldConfig, Panel } from '../core/schema';
 
 /** Tile edge in px. Zoom z shows the world 256 · 2^z px wide, as in OpenLayers (which Grafana uses). */
@@ -257,11 +258,21 @@ interface Dimension<T> {
   mode?: string;
 }
 
+interface Location {
+  mode?: string;
+  latitude?: string;
+  longitude?: string;
+  geohash?: string;
+  lookup?: string;
+  /** Lookup mode: the gazetteer's path on the Grafana server, or a URL. */
+  gazetteer?: string;
+}
+
 interface LayerOptions {
   type?: string;
   name?: string;
   config?: Record<string, any>;
-  location?: { mode?: string; latitude?: string; longitude?: string; geohash?: string; lookup?: string };
+  location?: Location;
   filterData?: { id?: string; options?: unknown };
   tooltip?: boolean;
   opacity?: number;
@@ -273,9 +284,15 @@ const DEFAULT_LAYERS: LayerOptions[] = [{ type: 'markers', name: 'Layer 1', conf
 /**
  * The basemap and data layers of a geomap panel, bottom first. Data layers are `markers`, `heatmap`, `route` and
  * `lastPointTracker`; raster layers (`xyz`, `carto`, …) draw over the basemap. Other layer types (geojson,
- * photos, day/night, …) are skipped.
+ * photos, day/night, …) are skipped. Lookup layers find places in `gazetteers`, keyed by path.
  */
-export function geomapLayers(panel: Panel, frames: DataFrame[], scheme: 'light' | 'dark', retina = false): GeoLayer[] {
+export function geomapLayers(
+  panel: Panel,
+  frames: DataFrame[],
+  scheme: 'light' | 'dark',
+  retina = false,
+  gazetteers: Record<string, Gazetteer> = {},
+): GeoLayer[] {
   const o = panel.options ?? {};
   const out: GeoLayer[] = [];
   const basemap = o.basemap as LayerOptions | undefined;
@@ -291,7 +308,7 @@ export function geomapLayers(panel: Panel, frames: DataFrame[], scheme: 'light' 
       out.push({ type: 'tiles', key, name, opacity, source: tileSource(layer, scheme, retina) });
       return;
     }
-    if (layer.type !== 'markers' && layer.type !== 'heatmap' && layer.type !== 'route' && layer.type !== 'lastPointTracker') return;
+    if (!isDataLayer(layer.type)) return;
 
     const filter = layer.filterData;
     const chosen = filter?.id === 'byRefId' && filter.options ? frames.filter((f) => f.refId === filter.options) : frames;
@@ -306,7 +323,7 @@ export function geomapLayers(panel: Panel, frames: DataFrame[], scheme: 'light' 
 
     const points: GeoPoints[] = [];
     for (const frame of chosen) {
-      const located = locate(frame, layer.location);
+      const located = locate(frame, layer.location, gazetteers);
       if (!located) continue;
       let { rows } = located;
       let { xs, ys } = located;
@@ -391,6 +408,25 @@ function thresholdLegend(key: string, config: FieldConfig, fallback: string): Le
   }));
 }
 
+const isDataLayer = (type?: string) => type === 'markers' || type === 'heatmap' || type === 'route' || type === 'lastPointTracker';
+
+const lookupField = (frame: DataFrame) => frame.fields.find((f) => f.name.toLowerCase() === 'lookup');
+
+/**
+ * The gazetteers a panel's layers need: the one each lookup layer names (countries by default), and the default
+ * for auto layers when a frame has a field called "lookup". Load these and pass them to geomapLayers.
+ */
+export function gazetteerPaths(panel: Panel, frames: DataFrame[]): string[] {
+  const paths = new Set<string>();
+  for (const layer of (panel.options?.layers as LayerOptions[] | undefined) ?? DEFAULT_LAYERS) {
+    if (!isDataLayer(layer.type)) continue;
+    const mode = layer.location?.mode ?? 'auto';
+    if (mode === 'lookup') paths.add(layer.location?.gazetteer || DEFAULT_GAZETTEER);
+    else if (mode === 'auto' && frames.some(lookupField)) paths.add(DEFAULT_GAZETTEER);
+  }
+  return [...paths];
+}
+
 const LAT_NAMES = ['lat', 'latitude'];
 const LON_NAMES = ['lon', 'lng', 'long', 'longitude'];
 
@@ -401,14 +437,21 @@ function fieldByName(frame: DataFrame, name: string, multiple: boolean): Field |
 /**
  * Rows of a frame that have a location, as world coordinates. `coords` reads named latitude/longitude fields,
  * `geohash` decodes a geohash field, and `auto` (the default) looks for fields called lat/latitude and
- * lon/lng/long/longitude, else geohash. `lookup` (gazetteer names) isn't supported.
+ * lon/lng/long/longitude, else geohash, else a field called "lookup". `lookup` finds each row's value of the
+ * `lookup` field in a gazetteer from `gazetteers` (by path, see gazetteerPaths); rows it doesn't know are skipped.
  */
-export function locate(frame: DataFrame, location: LayerOptions['location'] = {}): { rows: number[]; xs: number[]; ys: number[] } | undefined {
+export function locate(
+  frame: DataFrame,
+  location: Location = {},
+  gazetteers: Record<string, Gazetteer> = {},
+): { rows: number[]; xs: number[]; ys: number[] } | undefined {
   const mode = location.mode ?? 'auto';
   const named = (names: string[]) => frame.fields.find((f) => names.includes(f.name.toLowerCase()));
   let lat: Field | undefined;
   let lon: Field | undefined;
   let hash: Field | undefined;
+  let lookup: Field | undefined;
+  let gazetteer: Gazetteer | undefined;
   if (mode === 'coords') {
     lat = location.latitude ? fieldByName(frame, location.latitude, false) : undefined;
     lon = location.longitude ? fieldByName(frame, location.longitude, false) : undefined;
@@ -418,6 +461,10 @@ export function locate(frame: DataFrame, location: LayerOptions['location'] = {}
     lat = named(LAT_NAMES);
     lon = named(LON_NAMES);
     if (!lat || !lon) hash = named(['geohash']);
+    if ((!lat || !lon) && !hash) [lookup, gazetteer] = [lookupField(frame), gazetteers[DEFAULT_GAZETTEER]];
+  } else if (mode === 'lookup') {
+    lookup = location.lookup ? fieldByName(frame, location.lookup, false) : lookupField(frame);
+    gazetteer = gazetteers[location.gazetteer || DEFAULT_GAZETTEER];
   }
   const rows: number[] = [];
   const xs: number[] = [];
@@ -435,6 +482,11 @@ export function locate(frame: DataFrame, location: LayerOptions['location'] = {}
   } else if (hash) {
     hash.values.forEach((v, i) => {
       const p = typeof v === 'string' ? decodeGeohash(v) : undefined;
+      if (p) add(i, p.lon, p.lat);
+    });
+  } else if (lookup && gazetteer) {
+    lookup.values.forEach((v, i) => {
+      const p = v == null || v === '' ? undefined : gazetteer.find(String(v));
       if (p) add(i, p.lon, p.lat);
     });
   } else return undefined;

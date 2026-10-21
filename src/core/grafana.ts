@@ -158,6 +158,10 @@ export class GrafanaDataSource implements DataSource {
     return this.client.query(request, signal);
   }
 
+  publicFile(path: string, signal?: AbortSignal) {
+    return this.client.request<unknown>(`/${path.replace(/^\/+/, '')}`, { signal });
+  }
+
   /**
    * SQL variable queries run through /api/ds/query like any panel query. Other datasources
    * (Prometheus label_values() and the like) evaluate variable queries in Grafana's frontend,

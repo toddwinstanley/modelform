@@ -28,6 +28,11 @@ export interface DataSource {
    * query (the variable then keeps the options saved in the dashboard JSON).
    */
   variableOptions?(request: VariableQueryRequest, signal?: AbortSignal): Promise<VarOption[] | null>;
+  /**
+   * A JSON file the Grafana behind this datasource serves, by path such as `public/gazetteer/countries.json`.
+   * Geomap lookup layers load gazetteers with it.
+   */
+  publicFile?(path: string, signal?: AbortSignal): Promise<unknown>;
 }
 
 /** Maps a panel/target datasource reference to the implementation that serves it. */
