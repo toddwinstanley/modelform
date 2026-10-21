@@ -54,6 +54,15 @@ describe('interpolating All and multi-values', () => {
     expect(interpolate('x=~"$two"', { values })).toBe('x=~"(a|b)"');
   });
 
+  it('fills $__timezone from the dashboard, or the device zone for "browser"', () => {
+    const sql = "time AT TIME ZONE '$__timezone' and $__timeGroup(t, 1d)";
+    expect(interpolate(sql, { values, timezone: 'Europe/London' })).toBe("time AT TIME ZONE 'Europe/London' and $__timeGroup(t, 1d)");
+    expect(interpolate('$__timezone', { values, timezone: 'utc' })).toBe('utc');
+    const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(interpolate('${__timezone}', { values, timezone: 'browser' })).toBe(device);
+    expect(interpolate('$__timezone', { values })).toBe(device);
+  });
+
   it('formats :text and :sqlstring', () => {
     const ctx = { values, info };
     expect(interpolate('${one:text}', ctx)).toBe('X');

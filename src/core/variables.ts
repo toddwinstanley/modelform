@@ -180,6 +180,8 @@ interface InterpolateContext {
   scoped?: ScopedVars;
   range?: TimeRange;
   intervalMs?: number;
+  /** The dashboard's `timezone` setting, for `$__timezone`. Missing or "browser" means the device's zone. */
+  timezone?: string;
 }
 
 /**
@@ -214,8 +216,8 @@ export function interpolateDeep<T>(value: T, ctx: InterpolateContext): T {
   return value;
 }
 
-function builtinValues({ range, intervalMs }: InterpolateContext): Record<string, string> {
-  const b: Record<string, string> = {};
+function builtinValues({ range, intervalMs, timezone }: InterpolateContext): Record<string, string> {
+  const b: Record<string, string> = { __timezone: resolveTimezone(timezone) };
   if (intervalMs) {
     b.__interval = formatDuration(intervalMs);
     b.__interval_ms = String(intervalMs);
@@ -230,6 +232,19 @@ function builtinValues({ range, intervalMs }: InterpolateContext): Record<string
     b.__to = String(range.to);
   }
   return b;
+}
+
+/**
+ * What Grafana puts in `$__timezone`: "utc" for UTC, else an IANA zone name. "browser" (Grafana's default) and
+ * an empty setting mean the device's own zone.
+ */
+export function resolveTimezone(setting: string | undefined): string {
+  if (setting && setting !== 'browser') return setting;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'utc';
+  } catch {
+    return 'utc';
+  }
 }
 
 function formatVariable(value: string | string[], format: string | undefined, info: VariableInfo | undefined, dsType: string | undefined): string {

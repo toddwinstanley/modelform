@@ -16,6 +16,8 @@ export interface Dashboard {
   panels: Panel[];
   templating?: { list: TemplateVariable[] };
   time?: { from: string; to: string };
+  /** "browser" (the default), "utc", or an IANA zone such as "Europe/London". */
+  timezone?: string;
   refresh?: string | false;
   /** Present on dashboards exported "for sharing externally". */
   __inputs?: Array<{ name: string; type: string; pluginId?: string }>;

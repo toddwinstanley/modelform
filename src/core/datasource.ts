@@ -41,8 +41,10 @@ export interface PanelQueryContext {
   variableInfo?: Record<string, VariableInfo>;
   /** Rendered width in px; Grafana uses this as the default maxDataPoints. */
   widthPx: number;
-  /** Where `-- Dashboard --` queries find the panel they reuse. */
+  /** Where `-- Dashboard --` queries find the panel they reuse. Its `timezone` also sets `$__timezone`. */
   dashboard?: Dashboard;
+  /** Overrides the dashboard's `timezone` for `$__timezone`. */
+  timezone?: string;
   /**
    * Results shared between a panel and the `-- Dashboard --` panels that reuse it, by panelKey, so
    * the query runs once. Replace the map whenever the range or variables change.
@@ -104,7 +106,7 @@ async function rawQuery(panel: Panel, ctx: PanelQueryContext, signal: AbortSigna
   const maxDataPoints = (panel.maxDataPoints as number | undefined) ?? Math.max(100, Math.round(ctx.widthPx));
   const minInterval = typeof panel.interval === 'string' && panel.interval ? safeDuration(panel.interval) : undefined;
   const intervalMs = calculateInterval(ctx.range, maxDataPoints, minInterval);
-  const interp = { values: ctx.variables, info: ctx.variableInfo, scoped: panel.scopedVars, range: ctx.range, intervalMs };
+  const interp = { values: ctx.variables, info: ctx.variableInfo, scoped: panel.scopedVars, range: ctx.range, intervalMs, timezone: ctx.timezone ?? ctx.dashboard?.timezone };
 
   const panelRef = normalizeRef(panel.datasource);
   const groups = new Map<DataSource, QueryRequest['targets']>();

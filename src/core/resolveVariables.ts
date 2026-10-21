@@ -100,7 +100,7 @@ export async function resolveVariables(dashboard: Dashboard, opts: ResolveOption
     const ds = opts.resolve(ref);
     if (!ds.variableOptions) continue;
 
-    const query = interpolateDeep(v.query, { values, info, range: opts.range, datasourceType: ref?.type });
+    const query = interpolateDeep(v.query, { values, info, range: opts.range, datasourceType: ref?.type, timezone: dashboard.timezone });
     let raw: VarOption[] | null;
     try {
       raw = await ds.variableOptions({ query, datasource: ref, range: opts.range }, opts.signal);

@@ -80,7 +80,7 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
                   >
                     <Text style={[styles.chevron, { color: theme.textMuted }]}>{collapsed ? '▸' : '▾'}</Text>
                     <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={2}>
-                      {interpolate(section.row.title ?? '', { values: variables, info: variableInfo, scoped: section.row.scopedVars })}
+                      {interpolate(section.row.title ?? '', { values: variables, info: variableInfo, scoped: section.row.scopedVars, timezone: dashboard.timezone })}
                     </Text>
                   </Pressable>
                 )}
@@ -148,10 +148,10 @@ function useSeenSections(viewportHeight: number) {
 
 export function PanelCard({ panel, width, height, deferred }: { panel: Panel; width: number; height: number; deferred?: boolean }) {
   const theme = useDashTheme();
-  const { variables, variableInfo } = useDashboard();
+  const { dashboard, variables, variableInfo } = useDashboard();
   const input = isInputPanel(panel);
   const hasTitle = !!panel.title;
-  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo, scoped: panel.scopedVars }) : '';
+  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
   return (
     <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
       {hasTitle && (
