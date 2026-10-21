@@ -262,3 +262,13 @@ describe('lap time clock', () => {
     for (const d of ['13245', '5959', '995999']) expect(formatClock(parseClockDigits(d)!).replace(/\D/g, '')).toBe(d.padStart(6, '0'));
   });
 });
+
+describe('more reducers', () => {
+  it('computes median, stdDev, distinct and change counts', () => {
+    const v = [1, 3, 3, 7, null];
+    expect(reduce(v, 'median')).toBe(3);
+    expect(reduce([2, 4, 4, 4, 5, 5, 7, 9], 'stdDev')).toBe(2);
+    expect(reduce(v, 'distinctCount')).toBe(3);
+    expect(reduce(v, 'changeCount')).toBe(2);
+  });
+});

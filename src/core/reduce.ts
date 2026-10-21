@@ -12,7 +12,35 @@ export type Reducer =
   | 'count'
   | 'delta'
   | 'range'
-  | 'diff';
+  | 'diff'
+  | 'median'
+  | 'variance'
+  | 'stdDev'
+  | 'distinctCount'
+  | 'changeCount';
+
+/** Grafana's names for the reducers, as its legends and table footers label them. */
+export const REDUCER_LABELS: Record<Reducer, string> = {
+  last: 'Last',
+  lastNotNull: 'Last *',
+  first: 'First',
+  firstNotNull: 'First *',
+  mean: 'Mean',
+  sum: 'Total',
+  min: 'Min',
+  max: 'Max',
+  count: 'Count',
+  delta: 'Delta',
+  range: 'Range',
+  diff: 'Difference',
+  median: 'Median',
+  variance: 'Variance',
+  stdDev: 'StdDev',
+  distinctCount: 'Distinct Count',
+  changeCount: 'Change Count',
+};
+
+export const isReducer = (calc: string): calc is Reducer => calc in REDUCER_LABELS;
 
 export function reduce(values: Array<number | null | undefined>, calc: string = 'lastNotNull'): number | null {
   const nums = values.filter((v): v is number => v != null && !Number.isNaN(v));
@@ -44,6 +72,26 @@ export function reduce(values: Array<number | null | undefined>, calc: string = 
       let total = 0;
       for (let i = 1; i < nums.length; i++) total += nums[i] >= nums[i - 1] ? nums[i] - nums[i - 1] : nums[i];
       return total;
+    }
+    case 'median': {
+      if (!nums.length) return null;
+      const sorted = [...nums].sort((a, b) => a - b);
+      const mid = sorted.length >> 1;
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    case 'variance':
+    case 'stdDev': {
+      if (!nums.length) return null;
+      const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+      const variance = nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length;
+      return calc === 'stdDev' ? Math.sqrt(variance) : variance;
+    }
+    case 'distinctCount':
+      return new Set(nums).size;
+    case 'changeCount': {
+      let changes = 0;
+      for (let i = 1; i < nums.length; i++) if (nums[i] !== nums[i - 1]) changes++;
+      return changes;
     }
     default:
       return nums.length ? nums[nums.length - 1] : null;

@@ -1,6 +1,7 @@
 import { resolveFieldConfig } from '../core/fieldconfig';
 import { fieldDisplayName, toMillis, type DataFrame, type Field } from '../core/frame';
 import { formatValue, mappedResult, resolveColor, thresholdStep, valueColor } from '../core/format';
+import { isReducer, reduce, REDUCER_LABELS } from '../core/reduce';
 import type { FieldConfig, Panel } from '../core/schema';
 
 export type CellType = 'auto' | 'color-text' | 'color-background' | 'gauge';
@@ -18,6 +19,8 @@ export interface TableColumn {
   wrap: boolean;
   /** Numeric range of the column, for gauges and continuous colors without min/max. */
   extent?: [number, number];
+  /** Footer calculations for this column (`custom.footer.reducers`, or the older `options.footer`). */
+  reducers: string[];
 }
 
 export interface CellDisplay {
@@ -49,7 +52,8 @@ export function tableColumns(panel: Panel, frame: DataFrame, multipleFrames = fa
     const raw = fieldDisplayName(field, frame, multipleFrames);
     const config = resolveFieldConfig(panel, field, frame, raw);
     const custom = config.custom ?? {};
-    if (custom.hidden) return [];
+    // Grafana 13 renamed custom.hidden to custom.hideFrom.viz; dashboards may have either.
+    if (custom.hidden || (custom.hideFrom as { viz?: boolean } | undefined)?.viz) return [];
     const numeric = field.type === 'number';
     const align = custom.align === 'left' || custom.align === 'center' || custom.align === 'right' ? custom.align : numeric ? 'right' : 'left';
     const type = cellType(config);
@@ -65,8 +69,61 @@ export function tableColumns(panel: Panel, frame: DataFrame, multipleFrames = fa
         applyToRow: type === 'color-background' && !!(custom.cellOptions as { applyToRow?: boolean } | undefined)?.applyToRow,
         wrap: !!(custom.cellOptions as { wrapText?: boolean } | undefined)?.wrapText,
         extent: numeric ? extentOf(field.values) : undefined,
+        reducers: footerReducers(panel, config, [field.name, config.displayName ?? raw]),
       },
     ];
+  });
+}
+
+/**
+ * A column's footer calculations. Grafana 13 keeps them per field in `custom.footer.reducers`; older dashboards
+ * have one panel-wide `options.footer`, which Grafana converts the same way: `countRows` becomes "countAll",
+ * and `fields` limits the calculation to those columns.
+ */
+function footerReducers(panel: Panel, config: FieldConfig, names: string[]): string[] {
+  const own = (config.custom?.footer as { reducers?: string[] } | undefined)?.reducers;
+  if (own?.length) return own;
+  const legacy = panel.options?.footer as { show?: boolean; reducer?: string[]; countRows?: boolean; fields?: string | string[] } | undefined;
+  if (!legacy?.show) return [];
+  const reducer = legacy.reducer?.length ? legacy.reducer : ['sum'];
+  if (legacy.countRows && reducer[0] === 'count') return ['countAll'];
+  const fields = Array.isArray(legacy.fields) ? legacy.fields : legacy.fields ? [legacy.fields] : [];
+  return !fields.length || names.some((n) => fields.includes(n)) ? reducer : [];
+}
+
+export interface FooterLine {
+  /** The calculation's name, shown when a column has more than one. */
+  label?: string;
+  text: string;
+}
+
+/**
+ * Footer text per column, or null when no column has a footer. "countAll" (the total row count) is shown once,
+ * in the first column that asks for it. Calculations that need numbers are left blank on text columns.
+ */
+export function tableFooter(columns: TableColumn[]): FooterLine[][] | null {
+  if (!columns.some((c) => c.reducers.length)) return null;
+  let counted = false;
+  return columns.map((c) => {
+    const reducers = c.reducers.filter((r) => r !== 'countAll' || !counted);
+    const lines = reducers.flatMap((r): FooterLine[] => {
+      if (r === 'countAll') {
+        counted = true;
+        return [{ label: 'Count', text: String(c.field.values.length) }];
+      }
+      if (!isReducer(r)) return [];
+      const label = REDUCER_LABELS[r];
+      if (r === 'count') return [{ label, text: String(c.field.values.length) }];
+      if (c.field.type !== 'number') {
+        if (r === 'distinctCount') return [{ label, text: String(new Set(c.field.values.filter((v) => v != null)).size) }];
+        return [];
+      }
+      const value = reduce(c.field.values.map((v) => (v == null ? null : Number(v))), r);
+      const counts = r === 'distinctCount' || r === 'changeCount';
+      return [{ label, text: counts ? String(value ?? 0) : formatValue(value, c.config) }];
+    });
+    // A single calculation reads on its own, except a row count, which needs saying what it is.
+    return lines.length === 1 && lines[0].label !== 'Count' ? [{ text: lines[0].text }] : lines;
   });
 }
 

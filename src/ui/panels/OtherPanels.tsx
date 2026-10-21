@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
-import { contrastText, cellDisplay, tableColumns } from '../table';
+import { contrastText, cellDisplay, tableColumns, tableFooter } from '../table';
 import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
@@ -74,42 +74,60 @@ export function TablePanel({ panel, frames }: PanelProps) {
   if (!frame || !frameLength(frame)) return <NoData />;
   const rows = Math.min(frameLength(frame), 500);
   const rowColumn = columns.find((c) => c.applyToRow);
+  // Over every row, not just the 500 drawn, as in Grafana.
+  const footer = tableFooter(columns);
 
   return (
     <ScrollView horizontal>
-      <ScrollView nestedScrollEnabled>
-        <View style={[styles.tr, { borderBottomColor: theme.border }]}>
-          {columns.map((c) => (
-            <Text key={c.key} style={[styles.th, { width: c.width, color: theme.textSecondary, textAlign: c.align }]} numberOfLines={2}>
-              {c.name}
-            </Text>
-          ))}
-        </View>
-        {Array.from({ length: rows }, (_, i) => {
-          const rowBg = rowColumn ? cellDisplay(rowColumn, rowColumn.field.values[i], theme.accent).background : undefined;
-          return (
-            <View key={i} style={[styles.tr, { borderBottomColor: theme.grid }, rowBg ? { backgroundColor: rowBg } : null]}>
-              {columns.map((c) => {
-                const d = cellDisplay(c, c.field.values[i], theme.accent);
-                const bg = d.background ?? rowBg;
-                const color = d.color ?? (bg ? contrastText(bg, theme.text) : theme.text);
-                return (
-                  <View key={c.key} style={[styles.td, { width: c.width }, d.background ? { backgroundColor: d.background } : null]}>
-                    {d.gauge != null && (
-                      <View style={[styles.gaugeTrack, { backgroundColor: theme.grid }]}>
-                        <View style={[styles.gaugeFill, { width: `${d.gauge * 100}%`, backgroundColor: d.gaugeColor ?? theme.accent }]} />
-                      </View>
-                    )}
-                    <Text style={[styles.cellText, { color, textAlign: c.align }, c.field.type === 'number' && styles.num]} numberOfLines={c.wrap ? undefined : 1}>
-                      {d.text}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.fill}>
+        <ScrollView nestedScrollEnabled style={styles.fill}>
+          <View style={[styles.tr, { borderBottomColor: theme.border }]}>
+            {columns.map((c) => (
+              <Text key={c.key} style={[styles.th, { width: c.width, color: theme.textSecondary, textAlign: c.align }]} numberOfLines={2}>
+                {c.name}
+              </Text>
+            ))}
+          </View>
+          {Array.from({ length: rows }, (_, i) => {
+            const rowBg = rowColumn ? cellDisplay(rowColumn, rowColumn.field.values[i], theme.accent).background : undefined;
+            return (
+              <View key={i} style={[styles.tr, { borderBottomColor: theme.grid }, rowBg ? { backgroundColor: rowBg } : null]}>
+                {columns.map((c) => {
+                  const d = cellDisplay(c, c.field.values[i], theme.accent);
+                  const bg = d.background ?? rowBg;
+                  const color = d.color ?? (bg ? contrastText(bg, theme.text) : theme.text);
+                  return (
+                    <View key={c.key} style={[styles.td, { width: c.width }, d.background ? { backgroundColor: d.background } : null]}>
+                      {d.gauge != null && (
+                        <View style={[styles.gaugeTrack, { backgroundColor: theme.grid }]}>
+                          <View style={[styles.gaugeFill, { width: `${d.gauge * 100}%`, backgroundColor: d.gaugeColor ?? theme.accent }]} />
+                        </View>
+                      )}
+                      <Text style={[styles.cellText, { color, textAlign: c.align }, c.field.type === 'number' && styles.num]} numberOfLines={c.wrap ? undefined : 1}>
+                        {d.text}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </ScrollView>
+        {footer && (
+          <View style={[styles.tr, styles.footer, { borderTopColor: theme.border }]}>
+            {columns.map((c, ci) => (
+              <View key={c.key} style={[styles.td, { width: c.width }]}>
+                {footer[ci].map((line, li) => (
+                  <Text key={li} style={[styles.cellText, styles.footerText, { color: theme.text, textAlign: c.align }]} numberOfLines={1}>
+                    {line.label ? <Text style={{ color: theme.textMuted, fontWeight: '400' }}>{`${line.label}  `}</Text> : null}
+                    {line.text}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -245,6 +263,8 @@ const styles = StyleSheet.create({
   th: { paddingVertical: 6, paddingHorizontal: 6, fontSize: 12, fontWeight: '600' },
   td: { paddingVertical: 6, paddingHorizontal: 6, justifyContent: 'center' },
   cellText: { fontSize: 12 },
+  footer: { borderBottomWidth: 0, borderTopWidth: StyleSheet.hairlineWidth },
+  footerText: { fontWeight: '600', fontVariant: ['tabular-nums'] },
   gaugeTrack: { position: 'absolute', left: 6, right: 6, bottom: 3, height: 3, borderRadius: 2, overflow: 'hidden' },
   gaugeFill: { height: '100%', borderRadius: 2 },
   num: { textAlign: 'right', fontVariant: ['tabular-nums'] },

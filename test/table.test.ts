@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyTransformations, type DataFrame, type Panel } from '../src/core';
-import { cellDisplay, contrastText, tableColumns } from '../src/ui/table';
+import { cellDisplay, contrastText, tableColumns, tableFooter } from '../src/ui/table';
 
 const field = (name: string, type: 'string' | 'number', values: unknown[]) => ({ name, type, values });
 const steps = [
@@ -88,5 +88,45 @@ describe('table field config', () => {
     expect(contrastText('#FADE2A', '#fff')).toBe('#111111');
     expect(contrastText('#6e7079', '#fff')).toBe('#ffffff');
     expect(contrastText('transparent', '#abc')).toBe('#abc');
+  });
+});
+
+describe('table footer', () => {
+  const frame: DataFrame = {
+    fields: [field('Lap', 'string', ['L1', 'L2', 'L3']), field('Time', 'number', [80, 79, 81]), field('Fuel', 'number', [2, 2.5, null])],
+  };
+  const base = (extra: Partial<Panel>): Panel => ({ type: 'table', gridPos: { x: 0, y: 0, w: 24, h: 10 }, ...extra });
+  const texts = (p: Panel) => tableFooter(tableColumns(p, frame))?.map((lines) => lines.map((l) => (l.label ? `${l.label} ${l.text}` : l.text)));
+
+  it("reads Grafana 13's per-field reducers, formatted with the column's config", () => {
+    const panel = base({
+      fieldConfig: {
+        defaults: {},
+        overrides: [
+          { matcher: { id: 'byName', options: 'Time' }, properties: [{ id: 'custom.footer.reducers', value: ['mean', 'max'] }, { id: 'unit', value: 'suffix: s' }] },
+          { matcher: { id: 'byName', options: 'Fuel' }, properties: [{ id: 'custom.footer.reducers', value: ['sum'] }, { id: 'decimals', value: 1 }] },
+        ],
+      },
+    });
+    expect(texts(panel)).toEqual([[], ['Mean 80 s', 'Max 81 s'], ['4.5']]);
+    expect(tableFooter(tableColumns(base({}), frame))).toBeNull();
+  });
+
+  it('converts the older options.footer like Grafana does', () => {
+    const footer = (f: Record<string, unknown>) => texts(base({ options: { footer: { show: true, ...f } } }));
+    expect(footer({ reducer: ['sum'], fields: '' })).toEqual([[], ['240'], ['4.5']]);
+    expect(footer({ reducer: ['max'], fields: ['Fuel'] })).toEqual([[], [], ['2.5']]);
+    expect(footer({ reducer: ['count'], countRows: true })).toEqual([['Count 3'], [], []]);
+    expect(tableFooter(tableColumns(base({ options: { footer: { show: false, reducer: ['sum'] } } }), frame))).toBeNull();
+  });
+
+  it('counts text columns and skips calculations it has no numbers or name for', () => {
+    const panel = base({ fieldConfig: { defaults: { custom: { footer: { reducers: ['distinctCount', 'mean', 'percentile95'] } } }, overrides: [] } });
+    expect(texts(panel)).toEqual([['3'], ['Distinct Count 3', 'Mean 80'], ['Distinct Count 2', 'Mean 2.25']]);
+  });
+
+  it('hides columns marked hideFrom.viz, as Grafana 13 saves them', () => {
+    const panel = base({ fieldConfig: { defaults: {}, overrides: [{ matcher: { id: 'byName', options: 'Fuel' }, properties: [{ id: 'custom.hideFrom.viz', value: true }] }] } });
+    expect(tableColumns(panel, frame).map((c) => c.name)).toEqual(['Lap', 'Time']);
   });
 });
