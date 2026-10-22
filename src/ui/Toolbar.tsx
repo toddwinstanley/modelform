@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { TIME_PRESETS } from '../core/time';
 import type { TemplateVariable } from '../core/schema';
@@ -100,17 +101,27 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
 function FilterSheet({ vars, visible, onClose }: { vars: TemplateVariable[]; visible: boolean; onClose(): void }) {
   const theme = useDashTheme();
   const [expanded, setExpanded] = useState<string | null>(vars.length === 1 ? vars[0].name : null);
+  // In landscape the sheet goes full screen, so keep clear of the notch and home indicator.
+  const insets = useSafeAreaInsets();
+  const sides = { paddingLeft: insets.left, paddingRight: insets.right };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      // iOS otherwise forces portrait while the sheet is open.
+      supportedOrientations={['portrait', 'landscape']}
+      onRequestClose={onClose}
+    >
+      <View style={[styles.sheet, sides, { backgroundColor: theme.background }]}>
         <View style={[styles.sheetHeader, { borderColor: theme.border }]}>
           <Text style={[styles.sheetTitle, { color: theme.text }]}>Filters</Text>
           <Pressable onPress={onClose} accessibilityRole="button" hitSlop={8}>
             <Text style={[styles.done, { color: theme.accent }]}>Done</Text>
           </Pressable>
         </View>
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+        <ScrollView contentContainerStyle={[styles.sheetBody, { paddingBottom: Math.max(12, insets.bottom) }]}>
           {vars.map((v) => (
             <FilterSection
               key={v.name}

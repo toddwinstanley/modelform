@@ -12,6 +12,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isInputPanel } from '../core/inputs';
 import { gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode } from '../core/layout';
 import { panelHasQueries } from '../core/datasource';
@@ -27,9 +28,11 @@ const GAP = 8;
 const SIDE = 12;
 const TITLE_H = 28;
 const TABLET_WIDTH = 700;
+/** Shortest a panel gets when capped to the viewport. */
+const MIN_PANEL_H = 160;
 
 export interface DashboardViewProps {
-  /** "auto" uses the phone layout below 700pt and the original grid above. */
+  /** "auto" uses the phone layout below 700pt of usable width (e.g. phones in portrait) and the original grid above. */
   mode?: LayoutMode | 'auto';
   header?: ReactNode;
   footer?: ReactNode;
@@ -45,14 +48,18 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
   // the window width covers the first frame before layout has run.
   const [measured, onLayout] = useLayout();
   const window = useWindowDimensions();
-  const width = measured.width || window.width;
+  // Landscape phones put the notch and home indicator on the sides.
+  const insets = useSafeAreaInsets();
+  const width = (measured.width || window.width) - insets.left - insets.right;
   const layoutMode: LayoutMode = mode === 'auto' ? (width >= TABLET_WIDTH ? 'grid' : 'phone') : mode;
   const sections = useMemo(
     () => layoutDashboard(dashboard, layoutMode, { values: variables, info: variableInfo }),
     [dashboard, layoutMode, variables, variableInfo],
   );
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
-  const { seen, onScroll, onSectionLayout } = useSeenSections(window.height);
+  const { seen, viewportH, onScroll, onViewportLayout, onSectionLayout } = useSeenSections(window.height);
+  // Keep every panel within one screen so a chart is never taller than the viewport (landscape phones).
+  const maxPanelH = Math.max(MIN_PANEL_H, viewportH - SIDE * 2);
   const contentW = width - SIDE * 2;
   const canRefresh = refreshable ?? dashboard.panels.some((p) => panelHasQueries(p) || p.panels?.some(panelHasQueries));
 
@@ -61,8 +68,9 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
       {width > 0 && (
         <ScrollView
           onScroll={onScroll}
+          onLayout={onViewportLayout}
           scrollEventThrottle={100}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingLeft: SIDE + insets.left, paddingRight: SIDE + insets.right }]}
           keyboardShouldPersistTaps="handled"
           refreshControl={canRefresh ? <RefreshControl refreshing={false} onRefresh={refresh} /> : undefined}
         >
@@ -90,7 +98,7 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
                       {row.cells.map((cell) => {
                         const w = (contentW + GAP) * (cell.span / GRID_COLUMNS) - GAP;
                         return (
-                          <PanelCard key={cell.key} panel={cell.panel} width={w} height={gridUnitsToPx(row.h)} deferred={!seen.has(section.key)} />
+                          <PanelCard key={cell.key} panel={cell.panel} width={w} height={Math.min(gridUnitsToPx(row.h), maxPanelH)} deferred={!seen.has(section.key)} />
                         );
                       })}
                     </View>
@@ -113,6 +121,7 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
 function useSeenSections(viewportHeight: number) {
   const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
   const view = useRef({ y: 0, h: viewportHeight });
+  const [viewportH, setViewportH] = useState(viewportHeight);
   const positions = useRef(new Map<string, { y: number; h: number }>());
 
   const reveal = useCallback(() => {
@@ -134,6 +143,17 @@ function useSeenSections(viewportHeight: number) {
     [reveal],
   );
 
+  // Rotation changes the viewport without a scroll event.
+  const onViewportLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      view.current = { ...view.current, h };
+      setViewportH(h);
+      reveal();
+    },
+    [reveal],
+  );
+
   const onSectionLayout = useCallback(
     (key: string, e: LayoutChangeEvent) => {
       const { y, height } = e.nativeEvent.layout;
@@ -143,7 +163,7 @@ function useSeenSections(viewportHeight: number) {
     [reveal],
   );
 
-  return { seen, onScroll, onSectionLayout };
+  return { seen, viewportH, onScroll, onViewportLayout, onSectionLayout };
 }
 
 export function PanelCard({ panel, width, height, deferred }: { panel: Panel; width: number; height: number; deferred?: boolean }) {
