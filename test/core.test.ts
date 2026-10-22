@@ -11,6 +11,10 @@ import {
   parseClockDigits,
   parseRange,
   parseTime,
+  parseLocalDateTime,
+  formatLocalDateTime,
+  timeExprError,
+  describeRange,
   queryPanel,
   reduce,
   resolveFieldConfig,
@@ -84,6 +88,30 @@ describe('time', () => {
   it('rounds the end of a range up', () => {
     const r = parseRange({ from: 'now/d', to: 'now/d' }, now);
     expect(r.to - r.from).toBe(86_400_000 - 1);
+  });
+  it('reads zone-less dates as local time and rejects overflow', () => {
+    expect(parseTime('2026-03-01')).toBe(new Date(2026, 2, 1).getTime());
+    expect(parseTime('2026-03-01 14:05')).toBe(new Date(2026, 2, 1, 14, 5).getTime());
+    expect(parseLocalDateTime('2026-02-30')).toBeNull();
+    expect(parseTime('2026-03-01T00:00:00Z')).toBe(Date.UTC(2026, 2, 1));
+  });
+  it('round-trips the picker format', () => {
+    const t = new Date(2026, 2, 1, 9, 4, 7).getTime();
+    expect(formatLocalDateTime(t)).toBe('2026-03-01 09:04:07');
+    expect(parseTime(formatLocalDateTime(t))).toBe(t);
+  });
+  it('validates picker input', () => {
+    expect(timeExprError('now-7d')).toBeNull();
+    expect(timeExprError('2026-03-01')).toBeNull();
+    expect(timeExprError('')).toBe('Required');
+    expect(timeExprError('last tuesday')).toMatch(/Use a date/);
+  });
+  it('describes ranges', () => {
+    expect(describeRange({ from: 'now-7d', to: 'now' }, now)).toBe('7d');
+    expect(describeRange({ from: 'now/y', to: 'now/y' }, now)).toBe('This year');
+    expect(describeRange({ from: '2026-03-01 00:00:00', to: '2026-03-05 23:59:59' }, now)).toBe('Mar 1 – Mar 5');
+    expect(describeRange({ from: '2025-12-30 00:00:00', to: '2026-01-02 23:59:59' }, now)).toBe('Dec 30, 2025 – Jan 2, 2026');
+    expect(describeRange({ from: '2026-03-01 08:00:00', to: '2026-03-01 17:30:00' }, now)).toBe('Mar 1 08:00–17:30');
   });
 });
 

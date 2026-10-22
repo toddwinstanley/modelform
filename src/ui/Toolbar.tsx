@@ -2,35 +2,24 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { TIME_PRESETS } from '../core/time';
+import { TIME_PRESETS, describeRange } from '../core/time';
 import type { TemplateVariable } from '../core/schema';
 import { ALL, valueText, visibleVariables } from '../core/variables';
 import { useDashboard } from './context';
+import { TimeRangeSheet } from './TimeRangeSheet';
 import { useDashTheme } from './theme';
 
-export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress(): void }) {
-  const theme = useDashTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={({ pressed }) => [
-        styles.chip,
-        { borderColor: selected ? theme.accent : theme.border, backgroundColor: selected ? theme.accent : theme.surface },
-        pressed && { opacity: 0.7 },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: selected ? '#fff' : theme.text }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+export { Chip } from './Chip';
 
 const FilterIcon = ({ color }: { color: string }) => (
   <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <Path d="M3 5h18l-7 8.5V19l-4 2v-7.5L3 5z" />
+  </Svg>
+);
+
+const CalendarIcon = ({ color }: { color: string }) => (
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM4 10h16M8 3v4M16 3v4" />
   </Svg>
 );
 
@@ -46,11 +35,14 @@ const CheckIcon = ({ color }: { color: string }) => (
   </Svg>
 );
 
-/** Time range presets as a segmented control, and a filter button that opens the template variables in a sheet. */
+/** Time range presets as a segmented control, a button for a custom range, and a filter button that opens the template variables in a sheet. */
 export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof TIME_PRESETS }) {
   const theme = useDashTheme();
   const { dashboard, rawRange, setRawRange, variables, variableErrors } = useDashboard();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [rangeKey, setRangeKey] = useState(0);
+  const custom = !presets.some((p) => rawRange.from === p.from && rawRange.to === p.to);
   const vars = visibleVariables(dashboard);
   const active = vars.filter((v) => {
     const cur = variables[v.name];
@@ -78,6 +70,26 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
           })}
         </View>
       </ScrollView>
+      <Pressable
+        onPress={() => {
+          setRangeKey((k) => k + 1);
+          setRangeOpen(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={custom ? `Time range, ${describeRange(rawRange)}` : 'Custom time range'}
+        style={({ pressed }) => [
+          custom ? styles.rangeButton : styles.iconButton,
+          { borderColor: custom ? theme.accent : theme.border, backgroundColor: theme.surface },
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <CalendarIcon color={custom ? theme.accent : theme.textSecondary} />
+        {custom && (
+          <Text style={[styles.rangeLabel, { color: theme.accent }]} numberOfLines={1}>
+            {describeRange(rawRange)}
+          </Text>
+        )}
+      </Pressable>
       {vars.length > 0 && (
         <Pressable
           onPress={() => setFiltersOpen(true)}
@@ -93,6 +105,7 @@ export function DashboardToolbar({ presets = TIME_PRESETS }: { presets?: typeof 
           )}
         </Pressable>
       )}
+      <TimeRangeSheet key={rangeKey} visible={rangeOpen} value={rawRange} onApply={setRawRange} onClose={() => setRangeOpen(false)} />
       <FilterSheet vars={vars} visible={filtersOpen} onClose={() => setFiltersOpen(false)} />
     </View>
   );
@@ -208,8 +221,8 @@ function FilterSection({ variable: v, open, onToggle }: { variable: TemplateVari
 
 const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, maxWidth: 240 },
-  chipText: { fontSize: 13, fontWeight: '500' },
+  rangeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 9, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, maxWidth: 200 },
+  rangeLabel: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   segmentScroll: { flexGrow: 1, flexShrink: 1 },
   segments: { flexDirection: 'row', padding: 2, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
   segment: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, minWidth: 36, alignItems: 'center' },
