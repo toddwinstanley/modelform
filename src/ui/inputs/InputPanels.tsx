@@ -51,9 +51,11 @@ function NumberInput({ panel, value, onChange }: InputProps) {
   const [size, onLayout] = useLayout();
   const compact = size.width > 0 && size.width < COMPACT_NUMBER_WIDTH;
   // Sync from outside changes (stepper, defaults, reset) without clobbering partial input like "72."
-  useEffect(() => {
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
     setText((t) => (value == null ? '' : Number(t.replace(',', '.')) === value && t.trim() ? t : String(value)));
-  }, [value]);
+  }
 
   const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
   const integer = Number.isInteger(step);
@@ -100,9 +102,11 @@ function DurationInput({ panel, value, onChange }: InputProps) {
   const toDigits = (v: InputValue) => (typeof v === 'number' ? formatClock(v).replace(/\D/g, '').replace(/^0+/, '') : '');
   const [digits, setDigits] = useState(toDigits(value));
   // Sync from outside changes (defaults, reset) without clobbering what's being typed.
-  useEffect(() => {
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
     setDigits((d) => (value == null ? (parseClockDigits(d) == null ? d : '') : parseClockDigits(d) === value ? d : toDigits(value)));
-  }, [value]);
+  }
 
   const masked = digits ? maskClock(digits) : '';
   const invalid = !!digits && parseClockDigits(digits) == null;

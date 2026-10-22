@@ -175,7 +175,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
 
 /** Line paths, broken at nulls. With `step`, each value holds until the next point (Grafana's "stepAfter"). */
 function segments(s: StyledSeries, x: (v: number) => number, y: (v: number) => number, step = false) {
-  const out: Array<{ d: string; firstX: number; lastX: number }> = [];
+  const out: { d: string; firstX: number; lastX: number }[] = [];
   let d = '';
   let firstX = 0;
   let lastX = 0;

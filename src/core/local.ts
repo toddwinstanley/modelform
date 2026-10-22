@@ -96,7 +96,7 @@ export function buildFrames(
 
   return [...groups].map(([group, rows]) => {
     let times: number[];
-    let values: Array<number | null>;
+    let values: (number | null)[];
     if (aggregate === 'none') {
       const points = rows.filter((e) => target.fill !== 'previous' || e.value != null);
       times = points.map((e) => e.ts);

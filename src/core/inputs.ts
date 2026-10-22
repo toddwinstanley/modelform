@@ -86,7 +86,7 @@ export function formatClock(seconds: number): string {
 }
 
 /** A form value as held by the UI before saving. */
-export type InputValue = number | string | boolean | Array<number | string> | null;
+export type InputValue = number | string | boolean | (number | string)[] | null;
 
 /** One recorded data point. `value` holds numbers (and booleans as 0/1); `text` holds free text and string choices. */
 export interface Entry {

@@ -110,7 +110,7 @@ const HOUR = 3_600_000;
 
 function TimestampPicker({ offsetMs, onChange }: { offsetMs: number; onChange(ms: number): void }) {
   const theme = useDashTheme();
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);

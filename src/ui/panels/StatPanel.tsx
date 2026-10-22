@@ -56,7 +56,7 @@ function StatTile({ v, showName, panel }: { v: ReducedValue; showName: boolean; 
   );
 }
 
-export function Sparkline({ values, width, height, color }: { values: Array<number | null>; width: number; height: number; color: string }) {
+export function Sparkline({ values, width, height, color }: { values: (number | null)[]; width: number; height: number; color: string }) {
   const nums = values.filter((v): v is number => v != null);
   const min = Math.min(...nums);
   const max = Math.max(...nums);

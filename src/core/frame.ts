@@ -29,7 +29,7 @@ export interface Series {
   name: string;
   /** x positions: epoch ms for time series, the x field's values for toXYSeries. */
   times: number[];
-  values: Array<number | null>;
+  values: (number | null)[];
   field: Field;
 }
 

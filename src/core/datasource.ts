@@ -8,7 +8,7 @@ import { interpolateDeep, type VariableInfo, type VariableValues, type VarOption
 
 export interface QueryRequest {
   /** Already interpolated; `datasource` is filled in on every target. */
-  targets: Array<Target & { datasource?: DataSourceRef }>;
+  targets: (Target & { datasource?: DataSourceRef })[];
   range: TimeRange;
   intervalMs: number;
   maxDataPoints: number;
@@ -116,7 +116,7 @@ async function rawQuery(panel: Panel, ctx: PanelQueryContext, signal: AbortSigna
   const panelRef = normalizeRef(panel.datasource);
   const groups = new Map<DataSource, QueryRequest['targets']>();
 
-  const reused: Array<Promise<DataFrame[]>> = [];
+  const reused: Promise<DataFrame[]>[] = [];
 
   for (const target of panel.targets ?? []) {
     if (target.hide) continue;

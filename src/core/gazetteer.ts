@@ -29,7 +29,7 @@ export function parseGazetteer(json: unknown): Gazetteer {
   };
 
   if (Array.isArray(json)) {
-    for (const item of json as Array<Record<string, any>>) {
+    for (const item of json as Record<string, any>[]) {
       const lat = Number(item?.latitude ?? item?.lat);
       const lon = Number(item?.longitude ?? item?.lon ?? item?.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
@@ -39,7 +39,7 @@ export function parseGazetteer(json: unknown): Gazetteer {
       add(item.name, p);
     }
   } else if ((json as { type?: string })?.type === 'FeatureCollection') {
-    for (const f of (json as { features?: Array<Record<string, any>> }).features ?? []) {
+    for (const f of (json as { features?: Record<string, any>[] }).features ?? []) {
       const p = featurePoint(f?.geometry);
       if (!p) continue;
       add(f.id, p);

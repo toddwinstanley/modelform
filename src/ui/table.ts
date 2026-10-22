@@ -196,7 +196,7 @@ export interface TableSort {
 
 /** The panel's starting sort, from `options.sortBy` (matched by display name, as Grafana saves it). */
 export function initialSort(panel: Panel, columns: TableColumn[]): TableSort | null {
-  const first = (panel.options?.sortBy as Array<{ displayName?: string; desc?: boolean }> | undefined)?.[0];
+  const first = (panel.options?.sortBy as { displayName?: string; desc?: boolean }[] | undefined)?.[0];
   const col = first?.displayName != null ? columns.find((c) => c.name === first.displayName || c.field.name === first.displayName) : undefined;
   return col ? { key: col.key, desc: !!first!.desc } : null;
 }

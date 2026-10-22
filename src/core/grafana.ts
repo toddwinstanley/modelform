@@ -39,7 +39,7 @@ interface WireFrame {
   schema?: {
     name?: string;
     refId?: string;
-    fields: Array<{ name: string; type?: string; labels?: Record<string, string>; config?: any }>;
+    fields: { name: string; type?: string; labels?: Record<string, string>; config?: any }[];
   };
   data?: { values: unknown[][] };
 }

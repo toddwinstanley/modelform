@@ -164,7 +164,7 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function range(values: Array<number | null>): [number, number] | undefined {
+function range(values: (number | null)[]): [number, number] | undefined {
   let lo = Infinity;
   let hi = -Infinity;
   for (const v of values) {
@@ -179,7 +179,12 @@ function range(values: Array<number | null>): [number, number] | undefined {
 export function xyDomain(values: number[][], config: FieldConfig): [number, number] {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const vs of values) for (const v of vs) (lo = Math.min(lo, v)), (hi = Math.max(hi, v));
+  for (const vs of values) {
+    for (const v of vs) {
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+  }
   if (lo === Infinity) return [config.min ?? 0, config.max ?? 1];
   const pad = (hi - lo || Math.abs(hi) || 1) * 0.05;
   return [config.min ?? lo - pad, config.max ?? hi + pad];

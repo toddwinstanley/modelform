@@ -212,6 +212,8 @@ function DataPanelBody({ panel, width, height }: { panel: Panel; width: number; 
       </View>
     );
   }
+  // panelComponent looks up a module-level registry, so the component's identity is stable per panel type.
+  // eslint-disable-next-line react-hooks/static-components
   return <Component panel={panel} frames={data.frames} width={width} height={height} />;
 }
 

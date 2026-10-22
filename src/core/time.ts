@@ -119,7 +119,7 @@ export function formatDuration(ms: number): string {
   return `${ms}ms`;
 }
 
-export const TIME_PRESETS: Array<{ label: string; from: string; to: string }> = [
+export const TIME_PRESETS: { label: string; from: string; to: string }[] = [
   { label: '1h', from: 'now-1h', to: 'now' },
   { label: '6h', from: 'now-6h', to: 'now' },
   { label: '24h', from: 'now-24h', to: 'now' },

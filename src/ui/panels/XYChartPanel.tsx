@@ -45,8 +45,7 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
     const y = linearScale(y0, y1, pad.top + plotH, pad.top);
     const points = series.map((s) => ({ px: s.xs.map(x), py: s.ys.map(y) }));
     return { x, y, x0, x1, y0, y1, points, paths: series.map((s, i) => drawSeries(s, points[i].px, points[i].py)) };
-    // pad follows from showX, showY and the titles.
-  }, [series, plotW, plotH, showX, showY, xTitle, yTitle]);
+  }, [series, first, pad.left, pad.top, plotW, plotH]);
 
   if (!first || !layout || series.every((s) => !s.rows.length)) return <NoData />;
 
@@ -134,7 +133,7 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
  * Lines in data order, and the points batched into one path per color: a lap of telemetry is thousands of
  * points, far too many to draw as separate SVG elements.
  */
-function drawSeries(s: XYSeries, px: number[], py: number[]): { line?: string; dots: Array<[string, string]> } {
+function drawSeries(s: XYSeries, px: number[], py: number[]): { line?: string; dots: [string, string][] } {
   const line = s.show === 'points' ? undefined : px.map((x, i) => `${i ? 'L' : 'M'}${x},${py[i]}`).join('');
   if (s.show === 'lines') return { line, dots: [] };
   const byColor = new Map<string, string[]>();
@@ -152,14 +151,17 @@ function axisTicks(from: number, to: number, count: number): number[] {
   return ticks.length ? ticks : [from, to];
 }
 
-function nearestPoint(series: XYSeries[], points: Array<{ px: number[]; py: number[] }>, at: { x: number; y: number }) {
+function nearestPoint(series: XYSeries[], points: { px: number[]; py: number[] }[], at: { x: number; y: number }) {
   let best: { series: XYSeries; index: number; px: number; py: number } | null = null;
   let bestD = HIT_PX * HIT_PX;
   series.forEach((s, si) => {
     const { px, py } = points[si];
     for (let i = 0; i < px.length; i++) {
       const d = (px[i] - at.x) ** 2 + (py[i] - at.y) ** 2;
-      if (d < bestD) (bestD = d), (best = { series: s, index: i, px: px[i], py: py[i] });
+      if (d < bestD) {
+        bestD = d;
+        best = { series: s, index: i, px: px[i], py: py[i] };
+      }
     }
   });
   return best as { series: XYSeries; index: number; px: number; py: number } | null;

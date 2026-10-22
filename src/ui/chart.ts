@@ -1,5 +1,4 @@
-import type { DataFrame } from '../core/frame';
-import { fieldDisplayName, numberFields, toMillis, toSeries, toXYSeries, uniqueNames, type Field, type Series } from '../core/frame';
+import { fieldDisplayName, numberFields, toMillis, toSeries, toXYSeries, uniqueNames, type DataFrame, type Field, type Series } from '../core/frame';
 import { resolveFieldConfig } from '../core/fieldconfig';
 import { seriesColor, thresholdStep, resolveColor } from '../core/format';
 import { reduce } from '../core/reduce';
@@ -83,9 +82,9 @@ export interface BarAxis {
  * Bar chart y axes. Fields with `custom.axisPlacement: "right"` share a right axis with its own scale; every other
  * field shares the left one. Each axis runs from 0 (or min) to a round number above its tallest bar (or max).
  */
-export function barAxes(configs: FieldConfig[], values: Array<Array<number | null>>, tickCount: number): BarAxis[] {
+export function barAxes(configs: FieldConfig[], values: (number | null)[][], tickCount: number): BarAxis[] {
   const placement = (c: FieldConfig) => c.custom?.axisPlacement as string | undefined;
-  const sides: Array<'left' | 'right'> = ['left', 'right'];
+  const sides: ('left' | 'right')[] = ['left', 'right'];
   return sides.flatMap((side) => {
     const fields = configs.map((_, i) => i).filter((i) => (placement(configs[i]) === 'right') === (side === 'right'));
     if (!fields.length) return [];
@@ -149,13 +148,13 @@ export interface ReducedValue {
   color: string;
   /** Threshold color when thresholds are configured, else the series color. */
   stateColor: string;
-  sparkline: Array<number | null>;
+  sparkline: (number | null)[];
 }
 
 /** One value per numeric field, reduced with the panel's reduceOptions.calcs. Used by stat/gauge/bargauge/pie. */
 export function reducedValues(panel: Panel, frames: DataFrame[], scheme: 'light' | 'dark'): ReducedValue[] {
   const calc = panel.options?.reduceOptions?.calcs?.[0] ?? 'lastNotNull';
-  const out: Array<ReducedValue & { field: Field }> = [];
+  const out: (ReducedValue & { field: Field })[] = [];
   const multiple = frames.length > 1;
   frames.forEach((frame, fi) =>
     numberFields(frame).forEach((field) => {

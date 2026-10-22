@@ -24,7 +24,7 @@ export function useLayout(): [{ width: number; height: number }, (e: LayoutChang
   return [size, onLayout];
 }
 
-export function Legend({ items }: { items: Array<{ key: string; name: string; color: string; value?: string }> }) {
+export function Legend({ items }: { items: { key: string; name: string; color: string; value?: string }[] }) {
   const theme = useDashTheme();
   return (
     <View style={styles.legend}>
@@ -80,7 +80,7 @@ export function NoData({ message = 'No data' }: { message?: string }) {
 }
 
 /** Every field of a row, as Grafana's single-point tooltip shows it, except fields hidden from tooltips. */
-export function rowTooltipItems(panel: Panel, frame: DataFrame, row: number, multiple: boolean): Array<{ name: string; value: string }> {
+export function rowTooltipItems(panel: Panel, frame: DataFrame, row: number, multiple: boolean): { name: string; value: string }[] {
   return frame.fields.flatMap((f) => {
     const name = fieldDisplayName(f, frame, multiple);
     const config = resolveFieldConfig(panel, f, frame, name);
@@ -107,7 +107,7 @@ export function RowTooltip({
   size: { width: number; height: number };
   color: string;
   title: string;
-  rows: Array<{ name: string; value: string }>;
+  rows: { name: string; value: string }[];
 }) {
   const theme = useDashTheme();
   return (

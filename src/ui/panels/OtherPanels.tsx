@@ -23,22 +23,23 @@ export function PieChartPanel({ panel, frames }: PanelProps) {
   const inner = panel.options?.pieType === 'pie' ? 0 : r * 0.62;
   const cx = size.width / 2;
   const cy = size.height / 2;
-  let angle = -Math.PI / 2;
   const gap = values.length > 1 ? 0.02 : 0;
+  const slices: { key: string; d: string; color: string }[] = [];
+  let angle = -Math.PI / 2;
+  for (const v of values) {
+    const sweep = ((v.value ?? 0) / total) * Math.PI * 2;
+    slices.push({ key: v.key, d: donutSlice(cx, cy, r, inner, angle + gap / 2, angle + sweep - gap / 2), color: v.color });
+    angle += sweep;
+  }
 
   return (
     <View style={styles.fill}>
       <View style={styles.fill} onLayout={onLayout}>
         {r > 0 && (
           <Svg width={size.width} height={size.height}>
-            {values.map((v) => {
-              const sweep = ((v.value ?? 0) / total) * Math.PI * 2;
-              const d = donutSlice(cx, cy, r, inner, angle + gap / 2, angle + sweep - gap / 2);
-              angle += sweep;
-              return (
-<Path key={v.key} d={d} fill={v.color} />
-              );
-            })}
+            {slices.map((s) => (
+              <Path key={s.key} d={s.d} fill={s.color} />
+            ))}
           </Svg>
         )}
       </View>

@@ -175,7 +175,7 @@ function FilterSection({ variable: v, open, onToggle }: { variable: TemplateVari
       </Pressable>
       {open && (
         <View style={[styles.optionList, { borderColor: theme.border }]}>
-          {error && <Text style={[styles.hint, { color: theme.danger }]}>Couldn't load options: {error}</Text>}
+          {error && <Text style={[styles.hint, { color: theme.danger }]}>Couldn’t load options: {error}</Text>}
           {!error && !options.length && (
             <Text style={[styles.hint, { color: theme.textMuted }]}>{variablesReady ? 'No options' : 'Loading…'}</Text>
           )}

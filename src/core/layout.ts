@@ -56,7 +56,7 @@ export interface RepeatContext {
 }
 
 export function layoutDashboard(dashboard: Dashboard, mode: LayoutMode = 'phone', repeat?: RepeatContext): LayoutSection[] {
-  const sections: Array<{ row?: Panel; children: Panel[] }> = [{ children: [] }];
+  const sections: { row?: Panel; children: Panel[] }[] = [{ children: [] }];
 
   for (const panel of [...(dashboard.panels ?? [])].sort(byPosition)) {
     if (isRow(panel)) {

@@ -83,7 +83,7 @@ const TRANSFORMERS: Record<string, Transformer> = {
       ...frame,
       fields: frame.fields.map((f) => {
         const name = fieldDisplayName(f, frame, frames.length > 1);
-        const c = (conversions as Array<{ targetField?: string; destinationType?: string; dateFormat?: string; joinWith?: string }>).find(
+        const c = (conversions as { targetField?: string; destinationType?: string; dateFormat?: string; joinWith?: string }[]).find(
           (c) => c.targetField === f.name || c.targetField === name,
         );
         return c?.destinationType ? convert(f, c.destinationType, c) : f;
@@ -101,7 +101,10 @@ const TRANSFORMERS: Record<string, Transformer> = {
       const cells = new Map<unknown, Map<unknown, unknown>>();
       row.values.forEach((r, i) => {
         const c = col.values[i];
-        if (!cells.has(r)) cells.set(r, new Map()), rows.push(r);
+        if (!cells.has(r)) {
+          cells.set(r, new Map());
+          rows.push(r);
+        }
         if (!cols.includes(c)) cols.push(c);
         cells.get(r)!.set(c, val.values[i]);
       });

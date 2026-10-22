@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DataSourceResolver } from '../core/datasource';
 import type { DataFrame } from '../core/frame';
 import { queryPanel } from '../core/datasource';
@@ -60,7 +60,10 @@ export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey 
 
   // Both counters only ever increase, so their sum changes whenever either does.
   const refreshKey = tick + externalKey;
+  // refreshKey re-resolves relative times like `now-6h`; the shared query cache starts fresh with each range and variable set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const range = useMemo(() => parseRange(rawRange), [rawRange, refreshKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const shared = useMemo(() => new Map<string, Promise<DataFrame[]>>(), [range, vars.variables, vars.variableInfo]);
 
   const value = useMemo<DashboardState>(
@@ -98,10 +101,13 @@ function useDashboardVariables(dashboard: Dashboard, resolve: DataSourceResolver
   const [runKey, setRunKey] = useState(0);
   const pending = useRef(new Set<string>());
   const stateRef = useRef(state);
-  stateRef.current = state;
   // Callers often pass a fresh resolver each render; it shouldn't restart a run.
   const resolveRef = useRef(resolve);
-  resolveRef.current = resolve;
+  // Layout effects run before the passive effects below, so a run always sees this render's values.
+  useLayoutEffect(() => {
+    stateRef.current = state;
+    resolveRef.current = resolve;
+  });
 
   const schedule = useCallback((names: Iterable<string>) => {
     const before = pending.current.size;
@@ -144,8 +150,12 @@ function useDashboardVariables(dashboard: Dashboard, resolve: DataSourceResolver
   }, [runKey, dashboard]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load, and hot reload: keep the user's selections, re-run what Grafana runs on load.
-  useEffect(() => {
+  const [loadedDashboard, setLoadedDashboard] = useState(dashboard);
+  if (dashboard !== loadedDashboard) {
+    setLoadedDashboard(dashboard);
     setState((s) => ({ ...s, values: { ...initialVariableValues(dashboard), ...s.values } }));
+  }
+  useEffect(() => {
     const roots = refreshedVariables(dashboard, 'load');
     schedule([...roots, ...variableDependents(dashboard, roots)]);
   }, [dashboard, schedule]);
@@ -194,26 +204,30 @@ export interface PanelData {
   error?: string;
 }
 
+const IDLE: PanelData = { frames: [], loading: false };
+const NO_DATASOURCE: PanelData = { frames: [], loading: false, error: 'No datasource configured' };
+
 export function usePanelData(panel: Panel, widthPx: number, enabled = true): PanelData {
   const { dashboard, resolve, range, variables, variableInfo, variablesReady, shared } = useDashboard();
-  const [state, setState] = useState<PanelData>({ frames: [], loading: enabled });
   // Width only matters coarsely (it sets maxDataPoints); avoid re-querying on every pixel of resize.
   const widthBucket = Math.ceil(widthPx / 100) * 100;
+  const request = useMemo(
+    () => (resolve ? { panel, options: { resolve, range, variables, variableInfo, widthPx: widthBucket, dashboard, shared } } : null),
+    [panel, resolve, range, variables, variableInfo, widthBucket, dashboard, shared],
+  );
+  // Keyed to the request it answers, so the previous frames stay up while the next query loads.
+  const [result, setResult] = useState<{ request: object; frames: DataFrame[]; error?: string } | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
-    if (!resolve) {
-      setState({ frames: [], loading: false, error: 'No datasource configured' });
-      return;
-    }
-    setState((s) => ({ ...s, loading: true }));
-    if (!variablesReady) return;
+    if (!enabled || !request || !variablesReady) return;
     const controller = new AbortController();
-    queryPanel(panel, { resolve, range, variables, variableInfo, widthPx: widthBucket, dashboard, shared }, controller.signal)
-      .then((frames) => !controller.signal.aborted && setState({ frames, loading: false }))
-      .catch((e) => !controller.signal.aborted && setState({ frames: [], loading: false, error: String(e?.message ?? e) }));
+    queryPanel(request.panel, request.options, controller.signal)
+      .then((frames) => !controller.signal.aborted && setResult({ request, frames }))
+      .catch((e) => !controller.signal.aborted && setResult({ request, frames: [], error: String(e?.message ?? e) }));
     return () => controller.abort();
-  }, [enabled, panel, resolve, range, variables, variableInfo, variablesReady, widthBucket, dashboard, shared]);
+  }, [enabled, request, variablesReady]);
 
-  return state;
+  if (!enabled) return IDLE;
+  if (!request) return NO_DATASOURCE;
+  return { frames: result?.frames ?? [], error: result?.error, loading: !variablesReady || result?.request !== request };
 }

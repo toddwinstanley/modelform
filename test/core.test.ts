@@ -189,7 +189,7 @@ describe('local datasource', () => {
 
 describe('grafana client', () => {
   it('resolves placeholder datasources and parses frames', async () => {
-    const calls: Array<{ url: string; body?: any }> = [];
+    const calls: { url: string; body?: any }[] = [];
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       const json = url.endsWith('/api/frontend/settings')

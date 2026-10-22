@@ -528,7 +528,7 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function range(values: Array<number | null>): [number, number] | undefined {
+function range(values: (number | null)[]): [number, number] | undefined {
   let lo = Infinity;
   let hi = -Infinity;
   for (const v of values) {
@@ -610,7 +610,7 @@ export function heatmapCells(
   width: number,
   height: number,
   cell = 4,
-): Array<{ color: string; opacity: number; d: string }> {
+): { color: string; opacity: number; d: string }[] {
   const cols = Math.ceil(width / cell);
   const rowsN = Math.ceil(height / cell);
   if (cols <= 0 || rowsN <= 0) return [];

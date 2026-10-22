@@ -42,7 +42,7 @@ export const REDUCER_LABELS: Record<Reducer, string> = {
 
 export const isReducer = (calc: string): calc is Reducer => calc in REDUCER_LABELS;
 
-export function reduce(values: Array<number | null | undefined>, calc: string = 'lastNotNull'): number | null {
+export function reduce(values: (number | null | undefined)[], calc: string = 'lastNotNull'): number | null {
   const nums = values.filter((v): v is number => v != null && !Number.isNaN(v));
   switch (calc as Reducer) {
     case 'last':

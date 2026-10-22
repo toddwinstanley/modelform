@@ -33,7 +33,7 @@ const DRAG_PX = 6;
 const MAX_LABELS = 300;
 
 /** Screen positions of one layer's points, parallel to layer.points. */
-type Screen = Array<{ px: number[]; py: number[] }>;
+type Screen = { px: number[]; py: number[] }[];
 
 interface Picked {
   layer: MarkersLayer | RouteLayer;
@@ -58,8 +58,6 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
   const [moved, setMoved] = useState<MapView | null>(null);
   const [picked, setPicked] = useState<{ layer: string; group: number; index: number } | null>(null);
   const view = moved ?? home;
-  const viewRef = useRef(view);
-  viewRef.current = view;
   const [minZoom, maxZoom] = zoomLimits(panel);
   const zoomTo = (v: MapView, zoom: number) => setMoved({ ...v, zoom: Math.min(maxZoom, Math.max(minZoom, zoom)) });
 
@@ -93,7 +91,10 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
       screen.get(l.key)?.forEach(({ px, py }, group) => {
         for (let i = 0; i < px.length; i++) {
           const d = (px[i] - x) ** 2 + (py[i] - y) ** 2;
-          if (d <= bestD) (bestD = d), (best = { layer: l, group, index: i, px: px[i], py: py[i] });
+          if (d <= bestD) {
+            bestD = d;
+            best = { layer: l, group, index: i, px: px[i], py: py[i] };
+          }
         }
       });
     }
@@ -107,7 +108,7 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
     onResponderTerminationRequest: () => false,
     onResponderGrant: (e: any) => {
       const t = e.nativeEvent;
-      gesture.current = { x: t.pageX, y: t.pageY, lx: t.locationX, ly: t.locationY, view: viewRef.current, moved: false };
+      gesture.current = { x: t.pageX, y: t.pageY, lx: t.locationX, ly: t.locationY, view, moved: false };
     },
     onResponderMove: (e: any) => {
       const g = gesture.current;
@@ -115,7 +116,7 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
       const touches = e.nativeEvent.touches ?? [];
       if (touches.length >= 2) {
         const dist = Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
-        if (g.dist == null) Object.assign(g, { dist, view: viewRef.current, moved: true });
+        if (g.dist == null) Object.assign(g, { dist, view, moved: true });
         else if (dist > 0) zoomTo(g.view, g.view.zoom + Math.log2(dist / g.dist));
         return;
       }

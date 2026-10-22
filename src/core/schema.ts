@@ -20,7 +20,7 @@ export interface Dashboard {
   timezone?: string;
   refresh?: string | false;
   /** Present on dashboards exported "for sharing externally". */
-  __inputs?: Array<{ name: string; type: string; pluginId?: string }>;
+  __inputs?: { name: string; type: string; pluginId?: string }[];
 }
 
 export interface GridPos {
@@ -83,7 +83,7 @@ export interface MappingResult {
 
 export interface FieldOverride {
   matcher: { id: string; options?: unknown };
-  properties: Array<{ id: string; value: unknown }>;
+  properties: { id: string; value: unknown }[];
 }
 
 /** dashkit extension: how a panel behaves on a narrow screen. */
@@ -106,7 +106,7 @@ export interface Panel {
   fieldConfig?: { defaults?: FieldConfig; overrides?: FieldOverride[] };
   options?: Record<string, any>;
   /** Applied in order to the query results. See transform.ts for the ones dashkit implements. */
-  transformations?: Array<{ id: string; options?: Record<string, any>; disabled?: boolean }>;
+  transformations?: { id: string; options?: Record<string, any>; disabled?: boolean }[];
   /** Rows only. */
   collapsed?: boolean;
   /** Rows only: children of a collapsed row live here instead of at the top level. */
