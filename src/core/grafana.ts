@@ -23,6 +23,8 @@ export interface GrafanaSearchHit {
   uid: string;
   title: string;
   type: 'dash-db' | 'dash-folder';
+  /** The containing folder; absent at the root. For folders, the parent when Grafana has nested folders. */
+  folderUid?: string;
   folderTitle?: string;
   tags: string[];
   url: string;
@@ -90,8 +92,8 @@ export class GrafanaClient {
     return this.request<{ login: string; name?: string; orgId: number }>('/api/user');
   }
 
-  search(query = '', options: { tag?: string[]; limit?: number } = {}) {
-    const params = new URLSearchParams({ type: 'dash-db', query, limit: String(options.limit ?? 100) });
+  search(query = '', options: { type?: GrafanaSearchHit['type']; tag?: string[]; limit?: number } = {}) {
+    const params = new URLSearchParams({ type: options.type ?? 'dash-db', query, limit: String(options.limit ?? 100) });
     options.tag?.forEach((t) => params.append('tag', t));
     return this.request<GrafanaSearchHit[]>(`/api/search?${params}`);
   }
