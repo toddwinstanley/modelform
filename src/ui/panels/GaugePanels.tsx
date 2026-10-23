@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue, resolveColor } from '../../core/format';
 import { reducedValues, type ReducedValue } from '../chart';
+import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
-import { NoData, useLayout, type PanelProps } from './common';
+import { NoData, useLayout, valueLinks, type PanelProps } from './common';
 import { withAlpha } from './StatPanel';
 
 const SWEEP = 240;
@@ -17,15 +18,17 @@ export function GaugePanel({ panel, frames }: PanelProps) {
   return (
     <View style={styles.row}>
       {values.map((v) => (
-        <Gauge key={v.key} v={v} showName={values.length > 1} />
+        <Gauge key={v.key} v={v} showName={values.length > 1} panel={panel} />
       ))}
     </View>
   );
 }
 
-function Gauge({ v, showName }: { v: ReducedValue; showName: boolean }) {
+function Gauge({ v, showName, panel }: { v: ReducedValue; showName: boolean; panel: PanelProps['panel'] }) {
   const theme = useDashTheme();
   const [size, onLayout] = useLayout();
+  const { resolve, openLinks } = usePanelLinks(panel);
+  const hasLinks = !!v.config.links?.length;
   const min = v.config.min ?? 0;
   const max = v.config.max ?? 100;
   const frac = v.value == null ? 0 : Math.min(1, Math.max(0, (v.value - min) / (max - min || 1)));
@@ -36,7 +39,13 @@ function Gauge({ v, showName }: { v: ReducedValue; showName: boolean }) {
   const cy = size.height / 2 + d * 0.08;
 
   return (
-    <View style={styles.fill} onLayout={onLayout}>
+    <Pressable
+      style={({ pressed }) => [styles.fill, pressed && { opacity: 0.7 }]}
+      onLayout={onLayout}
+      disabled={!hasLinks}
+      onPress={() => openLinks(valueLinks(panel, v, resolve), v.name)}
+      accessibilityRole={hasLinks ? 'link' : undefined}
+    >
       {size.width > 0 && r > 0 && (
         <Svg width={size.width} height={size.height}>
           <Path d={arc(cx, cy, r, 0, 1)} stroke={withAlpha(v.stateColor, 0.18)} strokeWidth={stroke} fill="none" strokeLinecap="round" />
@@ -53,7 +62,7 @@ function Gauge({ v, showName }: { v: ReducedValue; showName: boolean }) {
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -71,6 +80,7 @@ function arc(cx: number, cy: number, r: number, a: number, b: number): string {
 export function BarGaugePanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const values = useMemo(() => reducedValues(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
+  const { resolve, openLinks } = usePanelLinks(panel);
   if (!values.length) return <NoData />;
   return (
     <View style={styles.bars}>
@@ -79,8 +89,15 @@ export function BarGaugePanel({ panel, frames }: PanelProps) {
         const max = v.config.max ?? Math.max(...values.map((o) => o.value ?? 0), 1);
         const frac = v.value == null ? 0 : Math.min(1, Math.max(0, (v.value - min) / (max - min || 1)));
         const color = v.config.thresholds ? v.stateColor : resolveColor(v.config.color?.fixedColor, v.color);
+        const hasLinks = !!v.config.links?.length;
         return (
-          <View key={v.key} style={styles.barRow}>
+          <Pressable
+            key={v.key}
+            style={({ pressed }) => [styles.barRow, pressed && { opacity: 0.7 }]}
+            disabled={!hasLinks}
+            onPress={() => openLinks(valueLinks(panel, v, resolve), v.name)}
+            accessibilityRole={hasLinks ? 'link' : undefined}
+          >
             <View style={styles.barLabels}>
               <Text style={[styles.name, { color: theme.textSecondary }]} numberOfLines={1}>
                 {v.name}
@@ -90,7 +107,7 @@ export function BarGaugePanel({ panel, frames }: PanelProps) {
             <View style={[styles.track, { backgroundColor: withAlpha(color, 0.18) }]}>
               <View style={[styles.meter, { width: `${frac * 100}%`, backgroundColor: color }]} />
             </View>
-          </View>
+          </Pressable>
         );
       })}
     </View>

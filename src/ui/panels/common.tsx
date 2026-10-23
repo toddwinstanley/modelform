@@ -3,9 +3,11 @@ import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Text as SvgText } from 'react-native-svg';
 import { resolveFieldConfig } from '../../core/fieldconfig';
 import { fieldDisplayName, toMillis, type DataFrame } from '../../core/frame';
-import { formatDisplay } from '../../core/format';
-import type { FieldConfig, Panel } from '../../core/schema';
-import { formatTooltipTime } from '../chart';
+import { formatDisplay, formatValue } from '../../core/format';
+import type { LinkData, ResolvedLink } from '../../core/links';
+import type { DataLink, FieldConfig, Panel } from '../../core/schema';
+import { formatTooltipTime, type ReducedValue } from '../chart';
+import { mergeLinks, TooltipLinks } from '../links';
 import { useDashTheme } from '../theme';
 
 export interface PanelProps {
@@ -92,6 +94,40 @@ export function rowTooltipItems(panel: Panel, frame: DataFrame, row: number, mul
   });
 }
 
+/** Data links of every field in a row, each resolved against that field and row. */
+export function rowLinks(
+  panel: Panel,
+  frame: DataFrame,
+  row: number,
+  multiple: boolean,
+  resolve: (links: DataLink[] | undefined, data?: LinkData) => ResolvedLink[],
+): ResolvedLink[] {
+  return mergeLinks(
+    frame.fields.flatMap((f) => {
+      const name = fieldDisplayName(f, frame, multiple);
+      const config = resolveFieldConfig(panel, f, frame, name);
+      if (!config.links?.length) return [];
+      const v = f.values[row];
+      const text = v == null ? undefined : f.type === 'number' ? formatDisplay(Number(v), config) : String(v);
+      return [{ name: config.displayName ?? name, links: resolve(config.links, { frame, row, field: f, fieldName: config.displayName ?? name, value: v, text }) }];
+    }),
+  );
+}
+
+/** Data links of a stat, gauge or bar gauge value. */
+export function valueLinks(panel: Panel, v: ReducedValue, resolve: (links: DataLink[] | undefined, data?: LinkData) => ResolvedLink[]): ResolvedLink[] {
+  if (!v.config.links?.length) return [];
+  return resolve(v.config.links, {
+    frame: v.frame,
+    field: v.field,
+    fieldName: v.name,
+    seriesName: v.name,
+    value: v.value,
+    text: formatValue(v.value, v.config),
+    calc: panel.options?.reduceOptions?.calcs?.[0] ?? 'lastNotNull',
+  });
+}
+
 /**
  * A tooltip beside the point `at` (panel px), on whichever side has more room in a panel of `size`:
  * a colored dot and title, then name/value rows.
@@ -102,17 +138,25 @@ export function RowTooltip({
   color,
   title,
   rows,
+  links,
+  onOpenLink,
 }: {
   at: { x: number; y: number };
   size: { width: number; height: number };
   color: string;
   title: string;
   rows: { name: string; value: string }[];
+  /** Shown, and tappable, when the tooltip is pinned. */
+  links?: ResolvedLink[];
+  onOpenLink?(l: ResolvedLink): void;
 }) {
   const theme = useDashTheme();
+  const tappable = !!links?.length && !!onOpenLink;
   return (
     <View
-      pointerEvents="none"
+      pointerEvents={tappable ? 'auto' : 'none'}
+      // Taps between the links stay on the tooltip rather than reaching the chart beneath.
+      onStartShouldSetResponder={() => tappable}
       style={[
         styles.tooltip,
         { backgroundColor: theme.surface, borderColor: theme.border },
@@ -134,6 +178,7 @@ export function RowTooltip({
           <Text style={[styles.tooltipValue, { color: theme.text }]}>{r.value}</Text>
         </View>
       ))}
+      {tappable && <TooltipLinks links={links!} onOpen={onOpenLink!} />}
     </View>
   );
 }

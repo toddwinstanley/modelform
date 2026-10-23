@@ -5,6 +5,7 @@ import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
 import { contrastText, cellDisplay, initialSort, nextSort, sortedRows, tableColumns, tableFooter, type TableSort } from '../table';
 import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
+import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
 
@@ -70,6 +71,7 @@ function donutSlice(cx: number, cy: number, r: number, inner: number, a0: number
  */
 export function TablePanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
+  const { resolve, openLinks } = usePanelLinks(panel);
   const frame = frames[0];
   const columns = useMemo(() => (frame ? tableColumns(panel, frame, frames.length > 1) : []), [panel, frame, frames.length]);
   // undefined until the user taps a header; until then the panel's own sortBy applies.
@@ -114,9 +116,23 @@ export function TablePanel({ panel, frames }: PanelProps) {
                 {columns.map((c) => {
                   const d = cellDisplay(c, c.field.values[i], theme.accent);
                   const bg = d.background ?? rowBg;
-                  const color = d.color ?? (bg ? contrastText(bg, theme.text) : theme.text);
+                  const linked = !!c.config.links?.length;
+                  // Linked cells read as links unless the column colors its text.
+                  const color = d.color ?? (bg ? contrastText(bg, theme.text) : linked ? theme.accent : theme.text);
+                  const cellStyle = [styles.td, { width: c.width }, d.background ? { backgroundColor: d.background } : null];
                   return (
-                    <View key={c.key} style={[styles.td, { width: c.width }, d.background ? { backgroundColor: d.background } : null]}>
+                    <Pressable
+                      key={c.key}
+                      disabled={!linked}
+                      onPress={() =>
+                        openLinks(
+                          resolve(c.config.links, { frame, row: i, field: c.field, fieldName: c.name, value: c.field.values[i], text: d.text }),
+                          `${c.name}: ${d.text}`,
+                        )
+                      }
+                      accessibilityRole={linked ? 'link' : undefined}
+                      style={({ pressed }) => [cellStyle, pressed && { opacity: 0.6 }]}
+                    >
                       {d.gauge != null && (
                         <View style={[styles.gaugeTrack, { backgroundColor: theme.grid }]}>
                           <View style={[styles.gaugeFill, { width: `${d.gauge * 100}%`, backgroundColor: d.gaugeColor ?? theme.accent }]} />
@@ -125,7 +141,7 @@ export function TablePanel({ panel, frames }: PanelProps) {
                       <Text style={[styles.cellText, { color, textAlign: c.align }, c.field.type === 'number' && styles.num]} numberOfLines={c.wrap ? undefined : 1}>
                         {d.text}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>

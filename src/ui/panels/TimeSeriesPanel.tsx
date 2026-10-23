@@ -2,9 +2,12 @@ import { useId, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { formatValue } from '../../core/format';
+import { numberFields, type DataFrame } from '../../core/frame';
+import type { LinkData } from '../../core/links';
 import { formatLocalDateTime, zoomRange } from '../../core/time';
 import { formatTimeTick, formatTooltipTime, linearScale, niceTicks, styledSeries, styledXYSeries, tickDecimals, yDomain, type StyledSeries } from '../chart';
-import { useDashboard } from '../context';
+import { useDashboard, usePanelLinks } from '../context';
+import { mergeLinks, TooltipLinks } from '../links';
 import { useDashTheme } from '../theme';
 import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, showLegend, useLayout, type PanelProps } from './common';
 
@@ -19,7 +22,8 @@ const BAR_MAX = 24;
  */
 export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
-  const { range, setRawRange } = useDashboard();
+  const { range, setRawRange, pinned, setPinned } = useDashboard();
+  const { resolve, openLinks } = usePanelLinks(panel);
   const [size, onLayout] = useLayout();
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ from: number; to: number } | null>(null);
@@ -28,7 +32,10 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const pinch = useRef<{ start: { from: number; to: number }; dist: number; frac: number } | null>(null);
   // Page x of the chart's left edge, so both fingers of a pinch map onto the plot.
   const originX = useRef(0);
-  const clipId = `plot${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const id = useId();
+  const clipId = `plot${id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  // A finger is on the chart; otherwise the tooltip only shows while pinned.
+  const [touching, setTouching] = useState(false);
 
   const numericX = panel.type === 'trend';
   const { series, xConfig } = useMemo(
@@ -97,7 +104,15 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
     setPreview(null);
   };
 
-  const hover = hoverX == null ? null : nearest(series, xFrom + ((hoverX - PAD.left) / (plotW || 1)) * span);
+  const hover = hoverX == null || (!touching && pinned !== id) ? null : nearest(series, xFrom + ((hoverX - PAD.left) / (plotW || 1)) * span);
+  const hoverLinks = hover
+    ? mergeLinks(
+        hover.rows.flatMap((r) =>
+          r.value == null || !r.series.config.links?.length ? [] : [{ name: r.name, links: resolve(r.series.config.links, linkData(r, frames, numericX ? String(panel.options?.xField ?? '') : undefined)) }],
+        ),
+      )
+    : [];
+  const isPinned = !!hover && pinned === id;
 
   return (
     <View style={styles.fill}>
@@ -126,11 +141,21 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
           onStartShouldSetResponder={() => true}
           onResponderGrant={(e) => {
             originX.current = e.nativeEvent.pageX - e.nativeEvent.locationX;
+            setTouching(true);
+            setPinned(null);
             setHoverX(e.nativeEvent.locationX);
           }}
           onResponderMove={(e) => setHoverX(e.nativeEvent.locationX)}
-          onResponderRelease={() => setHoverX(null)}
-          onResponderTerminate={() => setHoverX(null)}
+          onResponderRelease={() => {
+            setTouching(false);
+            // Keep the tooltip open where the finger lifted, so its links can be tapped.
+            if (hoverLinks.length) setPinned(id);
+            else setHoverX(null);
+          }}
+          onResponderTerminate={() => {
+            setTouching(false);
+            setHoverX(null);
+          }}
         >
           {size.width > 0 && (
             <Svg width={size.width} height={size.height}>
@@ -223,7 +248,8 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
           )}
           {hover && (
             <View
-              pointerEvents="none"
+              pointerEvents={isPinned ? 'auto' : 'none'}
+              onStartShouldSetResponder={() => isPinned}
               style={[
                 styles.tooltip,
                 { backgroundColor: theme.surface, borderColor: theme.border },
@@ -242,6 +268,7 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
                   <Text style={[styles.tooltipValue, { color: theme.text }]}>{formatValue(r.value, r.config)}</Text>
                 </View>
               ))}
+              {isPinned && <TooltipLinks links={hoverLinks} onOpen={(l) => openLinks([l])} />}
             </View>
           )}
         </View>
@@ -320,8 +347,38 @@ function nearest(series: StyledSeries[], t: number) {
     time,
     rows: series.map((s) => {
       const i = s.times.indexOf(time);
-      return { key: s.key, name: s.name, color: s.color, config: s.config, time, value: i >= 0 ? s.values[i] : null };
+      return { key: s.key, name: s.name, color: s.color, config: s.config, time, value: i >= 0 ? s.values[i] : null, series: s, index: i };
     }),
+  };
+}
+
+/** Where a tooltip row's value came from, for its data links. */
+function linkData(
+  r: { name: string; time: number; value: number | null; config: StyledSeries['config']; series: StyledSeries; index: number },
+  frames: DataFrame[],
+  /** Trend charts: the x field's name ('' for the first number field). Undefined for time series. */
+  xField: string | undefined,
+): LinkData {
+  const frame = frames.find((f) => f.fields.includes(r.series.field));
+  let row: number | undefined;
+  if (frame && xField === undefined) {
+    // Time series keep the frame's row order.
+    row = r.index;
+  } else if (frame) {
+    // Trend series are sorted by x, so find the row by its x value.
+    const xf = frame.fields.find((f) => f.name === xField) ?? numberFields(frame)[0];
+    const at = xf?.values.findIndex((v, k) => Number(v) === r.time && Number(r.series.field.values[k]) === r.value);
+    row = at != null && at >= 0 ? at : undefined;
+  }
+  return {
+    frame,
+    row,
+    field: r.series.field,
+    fieldName: r.name,
+    seriesName: r.name,
+    value: r.value,
+    text: formatValue(r.value, r.config),
+    time: xField === undefined ? r.time : undefined,
   };
 }
 

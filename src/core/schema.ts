@@ -57,6 +57,8 @@ export interface FieldConfig {
   color?: { mode?: string; fixedColor?: string };
   thresholds?: { mode?: 'absolute' | 'percentage'; steps: ThresholdStep[] };
   mappings?: ValueMapping[];
+  /** Data links: opened from a point, cell or value of this field. */
+  links?: DataLink[];
   custom?: {
     drawStyle?: 'line' | 'bars' | 'points';
     lineWidth?: number;
@@ -65,6 +67,13 @@ export interface FieldConfig {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+/** A Grafana data link or panel link. `url` may use variables and, for data links, `${__value.raw}`-style macros. */
+export interface DataLink {
+  title: string;
+  url: string;
+  targetBlank?: boolean;
 }
 
 /** Grafana value mappings: display text (and optionally a color) in place of a value. */
@@ -119,6 +128,8 @@ export interface Panel {
   /** Set on each copy of a repeated row or panel: the single value it was repeated for. */
   scopedVars?: Record<string, { text: string; value: string }>;
   mobile?: MobileOptions;
+  /** Panel links, from the panel header menu in Grafana. */
+  links?: DataLink[];
   [key: string]: unknown;
 }
 

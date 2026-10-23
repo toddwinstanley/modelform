@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { linearScale, niceTicks, tickDecimals } from '../chart';
+import { useDashboard, usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
 import { xyDomain, xySeries, type XYSeries } from '../xychart';
-import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, RowTooltip, rowTooltipItems, showLegend, useLayout, type PanelProps } from './common';
+import { AXIS_TITLE_SPACE, AxisTitles, axisTitle, Legend, NoData, RowTooltip, rowLinks, rowTooltipItems, showLegend, useLayout, type PanelProps } from './common';
 
 const AXIS = { left: 44, bottom: 20 };
 const EDGE = 8;
@@ -20,6 +21,10 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
   const [size, onLayout] = useLayout();
   const [touch, setTouch] = useState<{ x: number; y: number } | null>(null);
+  const [touching, setTouching] = useState(false);
+  const id = useId();
+  const { pinned, setPinned } = useDashboard();
+  const { resolve, openLinks } = usePanelLinks(panel);
   const series = useMemo(() => xySeries(panel, frames, theme.scheme), [panel, frames, theme.scheme]);
 
   const first = series[0];
@@ -53,7 +58,9 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
   const yTicks = showY ? axisTicks(layout.y0, layout.y1, plotH < 100 ? 2 : 4) : [];
   const gridX = first.xConfig.custom?.axisGridShow !== false;
   const gridY = first.yConfig.custom?.axisGridShow !== false;
-  const hover = touch ? nearestPoint(series, layout.points, touch) : null;
+  const hover = touch && (touching || pinned === id) ? nearestPoint(series, layout.points, touch) : null;
+  const hoverLinks = hover ? rowLinks(panel, hover.series.frame, hover.series.rows[hover.index], frames.length > 1, resolve) : [];
+  const isPinned = !!hover && pinned === id;
   const legendItems = series.filter((s) => !(s.yConfig.custom?.hideFrom as { legend?: boolean } | undefined)?.legend);
 
   return (
@@ -62,10 +69,22 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
         style={styles.fill}
         onLayout={onLayout}
         onStartShouldSetResponder={() => true}
-        onResponderGrant={(e) => setTouch({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY })}
+        onResponderGrant={(e) => {
+          setTouching(true);
+          setPinned(null);
+          setTouch({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+        }}
         onResponderMove={(e) => setTouch({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY })}
-        onResponderRelease={() => setTouch(null)}
-        onResponderTerminate={() => setTouch(null)}
+        onResponderRelease={() => {
+          setTouching(false);
+          // Keep the tooltip open on the point, so its links can be tapped.
+          if (hoverLinks.length) setPinned(id);
+          else setTouch(null);
+        }}
+        onResponderTerminate={() => {
+          setTouching(false);
+          setTouch(null);
+        }}
       >
         {size.width > 0 && (
           <Svg width={size.width} height={size.height}>
@@ -121,6 +140,8 @@ export function XYChartPanel({ panel, frames }: PanelProps) {
             color={hover.series.colors[hover.index]}
             title={hover.series.name}
             rows={rowTooltipItems(panel, hover.series.frame, hover.series.rows[hover.index], frames.length > 1)}
+            links={isPinned ? hoverLinks : undefined}
+            onOpenLink={(l) => openLinks([l])}
           />
         )}
       </View>

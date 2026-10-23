@@ -18,7 +18,8 @@ import { gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode } from '.
 import { panelHasQueries } from '../core/datasource';
 import type { Panel } from '../core/schema';
 import { interpolate } from '../core/variables';
-import { useDashboard, usePanelData } from './context';
+import { useDashboard, usePanelData, usePanelLinks } from './context';
+import { LinkIcon } from './links';
 import { InputPanelBody } from './inputs/InputPanels';
 import { panelComponent } from './panels/registry';
 import { useLayout } from './panels/common';
@@ -43,7 +44,7 @@ export interface DashboardViewProps {
 /** Renders the dashboard from the nearest <DashboardProvider>. */
 export function DashboardView({ mode = 'auto', header, footer, refreshable }: DashboardViewProps) {
   const theme = useDashTheme();
-  const { dashboard, refresh, variables, variableInfo } = useDashboard();
+  const { dashboard, refresh, variables, variableInfo, setPinned } = useDashboard();
   // Prefer the measured container width (correct in split view and embedded screens);
   // the window width covers the first frame before layout has run.
   const [measured, onLayout] = useLayout();
@@ -68,6 +69,8 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
       {width > 0 && (
         <ScrollView
           onScroll={onScroll}
+          // A pinned tooltip would scroll away with its chart; close it instead.
+          onScrollBeginDrag={() => setPinned(null)}
           onLayout={onViewportLayout}
           scrollEventThrottle={100}
           contentContainerStyle={[styles.content, { paddingLeft: SIDE + insets.left, paddingRight: SIDE + insets.right }]}
@@ -169,15 +172,30 @@ function useSeenSections(viewportHeight: number) {
 export function PanelCard({ panel, width, height, deferred }: { panel: Panel; width: number; height: number; deferred?: boolean }) {
   const theme = useDashTheme();
   const { dashboard, variables, variableInfo } = useDashboard();
+  const { resolve, openLinks } = usePanelLinks(panel);
   const input = isInputPanel(panel);
-  const hasTitle = !!panel.title;
+  const hasLinks = !!panel.links?.length;
+  const hasTitle = !!panel.title || hasLinks;
   const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
   return (
     <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
       {hasTitle && (
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+            {title}
+          </Text>
+          {hasLinks && (
+            <Pressable
+              onPress={() => openLinks(resolve(panel.links), title || undefined)}
+              accessibilityRole="button"
+              accessibilityLabel={panel.links!.length === 1 ? (panel.links![0].title || 'Open link') : 'Panel links'}
+              hitSlop={10}
+              style={({ pressed }) => [styles.titleLink, pressed && { opacity: 0.6 }]}
+            >
+              <LinkIcon color={theme.textMuted} />
+            </Pressable>
+          )}
+        </View>
       )}
       <View style={styles.body}>
         {deferred && !input ? null : input ? (
@@ -226,7 +244,9 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', gap: GAP },
   card: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8, overflow: 'hidden' },
-  title: { fontSize: 13, fontWeight: '600', height: TITLE_H - 8, marginBottom: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, height: TITLE_H - 8, marginBottom: 8 },
+  title: { flex: 1, fontSize: 13, fontWeight: '600' },
+  titleLink: { paddingTop: 1 },
   body: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 8 },
   error: { fontSize: 12, textAlign: 'center' },

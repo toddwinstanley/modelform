@@ -5,7 +5,7 @@ import { normalizeRef, type DataSource } from '../../core/datasource';
 import type { DataFrame } from '../../core/frame';
 import { loadGazetteer, type Gazetteer } from '../../core/gazetteer';
 import type { Panel } from '../../core/schema';
-import { useDashboard } from '../context';
+import { useDashboard, usePanelLinks } from '../context';
 import {
   gazetteerPaths,
   geomapLayers,
@@ -24,7 +24,7 @@ import {
   type TilesLayer,
 } from '../geomap';
 import { useDashTheme } from '../theme';
-import { Legend, RowTooltip, rowTooltipItems, useLayout, type PanelProps } from './common';
+import { Legend, RowTooltip, rowLinks, rowTooltipItems, useLayout, type PanelProps } from './common';
 
 /** How far from a point a tap can be and still pick it. */
 const HIT_PX = 24;
@@ -57,6 +57,7 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
   // Set once the map is panned or zoomed; until then the view follows the data (for "fit").
   const [moved, setMoved] = useState<MapView | null>(null);
   const [picked, setPicked] = useState<{ layer: string; group: number; index: number } | null>(null);
+  const links = usePanelLinks(panel);
   const view = moved ?? home;
   const [minZoom, maxZoom] = zoomLimits(panel);
   const zoomTo = (v: MapView, zoom: number) => setMoved({ ...v, zoom: Math.min(maxZoom, Math.max(minZoom, zoom)) });
@@ -178,6 +179,8 @@ export function GeomapPanel({ panel, frames }: PanelProps) {
             color={shown.color}
             title={shown.layer.name}
             rows={rowTooltipItems(panel, shown.frame, shown.row, frames.length > 1)}
+            links={rowLinks(panel, shown.frame, shown.row, frames.length > 1, links.resolve)}
+            onOpenLink={(l) => links.openLinks([l])}
           />
         )}
         {controls.showZoom !== false && (

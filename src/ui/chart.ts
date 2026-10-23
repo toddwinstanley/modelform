@@ -149,12 +149,15 @@ export interface ReducedValue {
   /** Threshold color when thresholds are configured, else the series color. */
   stateColor: string;
   sparkline: (number | null)[];
+  /** Where the value came from, for data links. */
+  field: Field;
+  frame: DataFrame;
 }
 
 /** One value per numeric field, reduced with the panel's reduceOptions.calcs. Used by stat/gauge/bargauge/pie. */
 export function reducedValues(panel: Panel, frames: DataFrame[], scheme: 'light' | 'dark'): ReducedValue[] {
   const calc = panel.options?.reduceOptions?.calcs?.[0] ?? 'lastNotNull';
-  const out: (ReducedValue & { field: Field })[] = [];
+  const out: ReducedValue[] = [];
   const multiple = frames.length > 1;
   frames.forEach((frame, fi) =>
     numberFields(frame).forEach((field) => {
@@ -173,6 +176,7 @@ export function reducedValues(panel: Panel, frames: DataFrame[], scheme: 'light'
         stateColor: step ? resolveColor(step.color, color) : color,
         sparkline: values,
         field,
+        frame,
       });
     }),
   );

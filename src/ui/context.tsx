@@ -2,10 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import type { DataSourceResolver } from '../core/datasource';
 import type { DataFrame } from '../core/frame';
 import { queryPanel } from '../core/datasource';
-import type { Dashboard, Panel } from '../core/schema';
+import { resolveLinks, type LinkData, type ResolvedLink } from '../core/links';
+import type { Dashboard, DataLink, Panel } from '../core/schema';
 import { parseDuration, parseRange, type TimeRange } from '../core/time';
 import { refreshedVariables, resolveVariables, variableDependents } from '../core/resolveVariables';
 import { initialVariableValues, variableInfo, type VariableInfo, type VariableValues, type VarOption } from '../core/variables';
+import { LinkMenu, openLinkDefault } from './links';
 
 interface DashboardState {
   dashboard: Dashboard;
@@ -26,6 +28,11 @@ interface DashboardState {
   refreshKey: number;
   /** Results that `-- Dashboard --` panels reuse; a new map whenever the range or variables change. */
   shared: Map<string, Promise<DataFrame[]>>;
+  /** Open a single link straight away, or offer a choice of several. */
+  openLinks(links: ResolvedLink[], title?: string): void;
+  /** The one panel whose tooltip is pinned open (showing its links), so pinning another closes it. */
+  pinned: string | null;
+  setPinned(id: string | null): void;
 }
 
 const Ctx = createContext<DashboardState | null>(null);
@@ -36,15 +43,34 @@ export interface DashboardProviderProps {
   resolve?: DataSourceResolver;
   /** Bump to force all panels to re-query (e.g. after the local store changes). */
   refreshKey?: number;
+  /**
+   * Called to open a data or panel link, e.g. to show a linked Grafana dashboard in the app
+   * (see parseDashboardLink). Without it, links open with React Native's Linking.
+   */
+  onLink?: (link: ResolvedLink) => void;
   children: ReactNode;
 }
 
-export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey = 0, children }: DashboardProviderProps) {
+export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey = 0, onLink, children }: DashboardProviderProps) {
   const [rawRange, setRawRange] = useState(dashboard.time ?? { from: 'now-6h', to: 'now' });
   const [tick, setTick] = useState(0);
   const vars = useDashboardVariables(dashboard, resolve, rawRange);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ links: ResolvedLink[]; title?: string } | null>(null);
+  const onLinkRef = useRef(onLink);
+  useLayoutEffect(() => {
+    onLinkRef.current = onLink;
+  });
+  const open = useCallback((link: ResolvedLink) => (onLinkRef.current ?? openLinkDefault)(link), []);
+  const openLinks = useCallback(
+    (links: ResolvedLink[], title?: string) => {
+      if (links.length === 1) open(links[0]);
+      else if (links.length > 1) setMenu({ links, title });
+    },
+    [open],
+  );
 
   useEffect(() => {
     if (!dashboard.refresh) return;
@@ -77,11 +103,28 @@ export function DashboardProvider({ dashboard, resolve, refreshKey: externalKey 
       refresh,
       refreshKey,
       shared,
+      openLinks,
+      pinned,
+      setPinned,
     }),
-    [dashboard, resolve, rawRange, range, vars, refresh, refreshKey, shared],
+    [dashboard, resolve, rawRange, range, vars, refresh, refreshKey, shared, openLinks, pinned],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      <LinkMenu
+        links={menu?.links ?? []}
+        title={menu?.title}
+        visible={!!menu}
+        onOpen={(l) => {
+          setMenu(null);
+          open(l);
+        }}
+        onClose={() => setMenu(null)}
+      />
+    </Ctx.Provider>
+  );
 }
 
 interface VariableState {
@@ -230,4 +273,18 @@ export function usePanelData(panel: Panel, widthPx: number, enabled = true): Pan
   if (!enabled) return IDLE;
   if (!request) return NO_DATASOURCE;
   return { frames: result?.frames ?? [], error: result?.error, loading: !variablesReady || result?.request !== request };
+}
+
+/**
+ * Resolve a panel's data links (or, without `data`, its panel links) against the dashboard's
+ * current variables and time range.
+ */
+export function usePanelLinks(panel: Panel) {
+  const { dashboard, variables, variableInfo, range, openLinks } = useDashboard();
+  const resolve = useCallback(
+    (links: DataLink[] | undefined, data?: LinkData) =>
+      resolveLinks(links, { dashboard, values: variables, info: variableInfo, scoped: panel.scopedVars, range, timezone: dashboard.timezone, data }),
+    [dashboard, variables, variableInfo, panel.scopedVars, range],
+  );
+  return { resolve, openLinks };
 }

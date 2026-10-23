@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { linearScale, reducedValues, type ReducedValue } from '../chart';
+import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
-import { NoData, useLayout, type PanelProps } from './common';
+import { NoData, useLayout, valueLinks, type PanelProps } from './common';
 
 /**
  * Grafana "stat": one big number per series. Threshold color is shown as an accent bar
@@ -31,15 +32,21 @@ function StatTile({ v, showName, panel }: { v: ReducedValue; showName: boolean; 
   const colorMode = panel.options?.colorMode ?? 'value';
   const graph = (panel.options?.graphMode ?? 'area') === 'area' && v.sparkline.filter((x) => x != null).length > 1;
   const fontSize = Math.max(18, Math.min(56, size.height * (graph ? 0.4 : 0.5), size.width / 4.5));
+  const { resolve, openLinks } = usePanelLinks(panel);
+  const hasLinks = !!v.config.links?.length;
 
   return (
-    <View
+    <Pressable
       onLayout={onLayout}
-      style={[
+      disabled={!hasLinks}
+      onPress={() => openLinks(valueLinks(panel, v, resolve), v.name)}
+      accessibilityRole={hasLinks ? 'link' : undefined}
+      style={({ pressed }) => [
         styles.tile,
         // With a sparkline, the number sits in the top half so the line runs beneath it.
         graph && { justifyContent: 'flex-start', paddingTop: 4 },
         colorMode === 'background' && { backgroundColor: withAlpha(v.stateColor, 0.14) },
+        pressed && { opacity: 0.7 },
       ]}
     >
       {colorMode !== 'none' && <View style={[styles.accent, { backgroundColor: v.stateColor }]} />}
@@ -52,7 +59,7 @@ function StatTile({ v, showName, panel }: { v: ReducedValue; showName: boolean; 
       <Text style={[styles.value, { color: theme.text, fontSize }]} numberOfLines={1} adjustsFontSizeToFit>
         {formatValue(v.value, v.config)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

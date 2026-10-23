@@ -182,6 +182,8 @@ interface InterpolateContext {
   intervalMs?: number;
   /** The dashboard's `timezone` setting, for `$__timezone`. Missing or "browser" means the device's zone. */
   timezone?: string;
+  /** Percent-encode substituted values, as Grafana does in links. `:raw` and `:queryparam` opt out. */
+  urlEncode?: boolean;
 }
 
 /**
@@ -196,14 +198,23 @@ export function interpolate(text: string, ctx: InterpolateContext): string {
       const name = plain ?? braced ?? old;
       const format = bracedFmt ?? oldFmt;
       const scoped = ctx.scoped?.[name];
-      if (scoped) {
-        const info = { ...ctx.info?.[name], options: [scoped] };
-        return formatVariable(scoped.value, format, info, ctx.datasourceType);
-      }
-      if (name in ctx.values) return formatVariable(ctx.values[name], format, ctx.info?.[name], ctx.datasourceType);
-      return builtins[name] ?? match;
+      const value = scoped ? scoped.value : ctx.values[name];
+      if (value == null) return builtins[name] != null ? encodeFor(builtins[name], format, ctx) : match;
+      if (format === 'queryparam') return queryParam(name, value);
+      const info = scoped ? { ...ctx.info?.[name], options: [scoped] } : ctx.info?.[name];
+      const text = formatVariable(value, format === 'percentencode' ? undefined : format, info, ctx.datasourceType);
+      return format === 'percentencode' ? encodeURIComponent(text) : encodeFor(text, format, ctx);
     },
   );
+}
+
+function encodeFor(text: string, format: string | undefined, ctx: InterpolateContext): string {
+  return ctx.urlEncode && format !== 'raw' ? encodeURIComponent(text) : text;
+}
+
+/** Grafana's `:queryparam` format: `var-name=a&var-name=b`, which is also how dashboard URLs carry variables. */
+export function queryParam(name: string, value: string | string[]): string {
+  return (Array.isArray(value) ? value : [value]).map((v) => `var-${encodeURIComponent(name)}=${encodeURIComponent(v)}`).join('&');
 }
 
 /** Deep-interpolate every string inside a query target. */
