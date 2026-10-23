@@ -202,3 +202,30 @@ export function describeRange(raw: { from: string; to: string }, now = Date.now(
   if (sameDay) return `${day(from, showYear)} ${time(from)}–${time(to)}`;
   return `${day(from, !sameYear)} ${time(from)} – ${day(to, showYear)} ${time(to)}`;
 }
+
+/**
+ * The range a pinch on an x axis shows. `startFrac`/`frac` are where the fingers' midpoint sat across
+ * the plot (0–1) when the pinch began and now; the value under it stays under it, so moving both
+ * fingers pans as well. `scale` > 1 spreads the fingers to zoom in. The result stays within
+ * [minFrom, maxTo] where it fits.
+ */
+export function zoomRange(
+  start: { from: number; to: number },
+  scale: number,
+  startFrac: number,
+  frac: number,
+  {
+    minSpan = 60_000,
+    maxSpan = 10 * 365 * UNIT_MS.d,
+    minFrom = -Infinity,
+    maxTo = Infinity,
+  }: { minSpan?: number; maxSpan?: number; minFrom?: number; maxTo?: number } = {},
+): { from: number; to: number } {
+  const span = start.to - start.from;
+  const next = Math.min(maxSpan, Math.max(minSpan, span / (scale > 0 ? scale : 1)));
+  const anchor = start.from + startFrac * span;
+  let from = anchor - frac * next;
+  if (from + next > maxTo) from = maxTo - next;
+  if (from < minFrom) from = minFrom;
+  return { from, to: from + next };
+}

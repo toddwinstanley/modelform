@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
+import { useId, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { formatValue } from '../../core/format';
+import { formatLocalDateTime, zoomRange } from '../../core/time';
 import { formatTimeTick, formatTooltipTime, linearScale, niceTicks, styledSeries, styledXYSeries, tickDecimals, yDomain, type StyledSeries } from '../chart';
 import { useDashboard } from '../context';
 import { useDashTheme } from '../theme';
@@ -13,12 +14,21 @@ const BAR_MAX = 24;
 /**
  * Grafana "timeseries" (and legacy "graph") panels: lines, points, bars and area fills.
  * Also "trend" panels, which are the same chart against a numeric x field (`options.xField`).
+ * Pinching a time axis previews the zoomed range locally, then sets the dashboard's range on release.
+ * Pinching a trend's numeric axis zooms just that chart, until "Reset zoom".
  */
 export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const theme = useDashTheme();
-  const { range } = useDashboard();
+  const { range, setRawRange } = useDashboard();
   const [size, onLayout] = useLayout();
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [preview, setPreview] = useState<{ from: number; to: number } | null>(null);
+  // A trend chart's own x zoom; time series zoom the dashboard's range instead.
+  const [xZoom, setXZoom] = useState<{ from: number; to: number } | null>(null);
+  const pinch = useRef<{ start: { from: number; to: number }; dist: number; frac: number } | null>(null);
+  // Page x of the chart's left edge, so both fingers of a pinch map onto the plot.
+  const originX = useRef(0);
+  const clipId = `plot${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   const numericX = panel.type === 'trend';
   const { series, xConfig } = useMemo(
@@ -45,7 +55,9 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const ticks = niceTicks(dMin, dMax, plotH < 100 ? 2 : 4);
   const yMin = series[0].config.min ?? ticks[0];
   const yMax = series[0].config.max ?? ticks[ticks.length - 1];
-  const [xFrom, xTo] = numericX ? xExtent(series) : [range.from, range.to];
+  const extent = numericX ? xExtent(series) : null;
+  const shown = preview ?? (numericX ? xZoom : null);
+  const [xFrom, xTo] = shown ? [shown.from, shown.to] : extent ?? [range.from, range.to];
   const x = linearScale(xFrom, xTo, PAD.left, PAD.left + plotW);
   const y = linearScale(yMin, yMax, PAD.top + plotH, PAD.top);
   const span = xTo - xFrom;
@@ -59,114 +71,180 @@ export function TimeSeriesPanel({ panel, frames }: PanelProps) {
   const groupW = Math.min(slot * 0.8, BAR_MAX * barSeries.length);
   const barW = Math.max(2, groupW / Math.max(barSeries.length, 1) - (barSeries.length > 1 ? 2 : 0));
 
+  const canPinch = plotW > 0;
+  const twoFingers = (e: any) => canPinch && (e.nativeEvent.touches?.length ?? 0) >= 2;
+  const onPinchMove = (e: any) => {
+    const touches = e.nativeEvent.touches ?? [];
+    // After a pinch, the finger left behind does nothing until it lifts.
+    if (touches.length < 2) return;
+    const [a, b] = touches;
+    const dist = Math.max(Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY), 1);
+    const frac = ((a.pageX + b.pageX) / 2 - originX.current - PAD.left) / plotW;
+    if (!pinch.current) pinch.current = { start: { from: xFrom, to: xTo }, dist, frac };
+    const p = pinch.current;
+    const limits = extent
+      ? { minSpan: (extent[1] - extent[0]) / 1000, maxSpan: extent[1] - extent[0], minFrom: extent[0], maxTo: extent[1] }
+      : { maxTo: Math.max(Date.now(), p.start.to) };
+    setPreview(zoomRange(p.start, dist / p.dist, p.frac, frac, limits));
+  };
+  const onPinchEnd = (commit: boolean) => {
+    if (commit && pinch.current && preview) {
+      if (!extent) setRawRange({ from: formatLocalDateTime(preview.from), to: formatLocalDateTime(preview.to) });
+      // Zoomed all the way out is the same as no zoom.
+      else setXZoom(preview.to - preview.from >= extent[1] - extent[0] ? null : preview);
+    }
+    pinch.current = null;
+    setPreview(null);
+  };
+
   const hover = hoverX == null ? null : nearest(series, xFrom + ((hoverX - PAD.left) / (plotW || 1)) * span);
 
   return (
     <View style={styles.fill}>
+      {/*
+        Two layers so one finger scrubs but still lets the dashboard scroll, while a second finger
+        hands the gesture to the outer layer. Its grant returns true, which on Android stops the
+        scroll view from intercepting the pinch; without that it cancels the pinch partway through.
+      */}
       <View
         style={styles.fill}
-        onLayout={onLayout}
-        onStartShouldSetResponder={() => true}
-        onResponderGrant={(e) => setHoverX(e.nativeEvent.locationX)}
-        onResponderMove={(e) => setHoverX(e.nativeEvent.locationX)}
-        onResponderRelease={() => setHoverX(null)}
-        onResponderTerminate={() => setHoverX(null)}
+        onStartShouldSetResponderCapture={twoFingers}
+        onMoveShouldSetResponderCapture={twoFingers}
+        onResponderTerminationRequest={() => false}
+        onResponderGrant={(e) => {
+          originX.current = e.nativeEvent.pageX - e.nativeEvent.locationX;
+          setHoverX(null);
+          return true;
+        }}
+        onResponderMove={onPinchMove}
+        onResponderRelease={() => onPinchEnd(true)}
+        onResponderTerminate={() => onPinchEnd(false)}
       >
-        {size.width > 0 && (
-          <Svg width={size.width} height={size.height}>
-            {ticks.map((t) => (
-              <G key={t}>
-                <Line x1={PAD.left} x2={PAD.left + plotW} y1={y(t)} y2={y(t)} stroke={theme.grid} strokeWidth={1} />
-                <SvgText x={PAD.left - 6} y={y(t) + 3} fontSize={10} fill={theme.textMuted} textAnchor="end">
-                  {formatValue(t, { ...unitConfig, decimals: tickDecimals(ticks) })}
+        <View
+          style={styles.fill}
+          onLayout={onLayout}
+          onStartShouldSetResponder={() => true}
+          onResponderGrant={(e) => {
+            originX.current = e.nativeEvent.pageX - e.nativeEvent.locationX;
+            setHoverX(e.nativeEvent.locationX);
+          }}
+          onResponderMove={(e) => setHoverX(e.nativeEvent.locationX)}
+          onResponderRelease={() => setHoverX(null)}
+          onResponderTerminate={() => setHoverX(null)}
+        >
+          {size.width > 0 && (
+            <Svg width={size.width} height={size.height}>
+              {ticks.map((t) => (
+                <G key={t}>
+                  <Line x1={PAD.left} x2={PAD.left + plotW} y1={y(t)} y2={y(t)} stroke={theme.grid} strokeWidth={1} />
+                  <SvgText x={PAD.left - 6} y={y(t) + 3} fontSize={10} fill={theme.textMuted} textAnchor="end">
+                    {formatValue(t, { ...unitConfig, decimals: tickDecimals(ticks) })}
+                  </SvgText>
+                </G>
+              ))}
+              {xTicks.map((t) => (
+                <SvgText
+                  key={t}
+                  x={x(t)}
+                  y={PAD.top + plotH + 15}
+                  fontSize={10}
+                  fill={theme.textMuted}
+                  textAnchor={x(t) - PAD.left < 20 ? 'start' : PAD.left + plotW - x(t) < 20 ? 'end' : 'middle'}
+                >
+                  {xLabel(t)}
                 </SvgText>
-              </G>
-            ))}
-            {xTicks.map((t) => (
-              <SvgText
-                key={t}
-                x={x(t)}
-                y={PAD.top + plotH + 15}
-                fontSize={10}
-                fill={theme.textMuted}
-                textAnchor={x(t) - PAD.left < 20 ? 'start' : PAD.left + plotW - x(t) < 20 ? 'end' : 'middle'}
-              >
-                {xLabel(t)}
-              </SvgText>
-            ))}
-            <AxisTitles x={xTitle} y={yTitle} plot={{ left: PAD.left, top: PAD.top, width: plotW, height: plotH }} height={size.height} />
+              ))}
+              <AxisTitles x={xTitle} y={yTitle} plot={{ left: PAD.left, top: PAD.top, width: plotW, height: plotH }} height={size.height} />
+              <Defs>
+                {/* Points sitting on the plot's edges may overhang it by their radius. */}
+                <ClipPath id={clipId}>
+                  <Rect x={PAD.left - 6} y={0} width={plotW + 12} height={size.height} />
+                </ClipPath>
+              </Defs>
+              <G clipPath={`url(#${clipId})`}>
+                {barSeries.map((s, si) =>
+                  s.times.map((t, i) => {
+                    const v = s.values[i];
+                    if (v == null || t < xFrom || t > xTo) return null;
+                    const left = x(t) - groupW / 2 + si * (groupW / barSeries.length);
+                    return <Path key={`${s.key}-${i}`} d={barPath(left, barW, y(Math.max(v, 0)), y(Math.min(v, 0)), v >= 0)} fill={s.color} />;
+                  }),
+                )}
 
-            {barSeries.map((s, si) =>
-              s.times.map((t, i) => {
-                const v = s.values[i];
-                if (v == null || t < xFrom || t > xTo) return null;
-                const left = x(t) - groupW / 2 + si * (groupW / barSeries.length);
-                return <Path key={`${s.key}-${i}`} d={barPath(left, barW, y(Math.max(v, 0)), y(Math.min(v, 0)), v >= 0)} fill={s.color} />;
-              }),
-            )}
+                {series
+                  .filter((s) => style(s) !== 'bars')
+                  .map((s) => {
+                    const fill = (s.config.custom?.fillOpacity ?? 0) / 100;
+                    const showPoints =
+                      style(s) === 'points' ||
+                      s.config.custom?.showPoints === 'always' ||
+                      (s.config.custom?.showPoints !== 'never' && s.times.length <= plotW / 14);
+                    const segs = segments(s, x, y, s.config.custom?.lineInterpolation === 'stepAfter');
+                    return (
+                      <G key={s.key}>
+                        {fill > 0 &&
+                          segs.map((seg, i) => (
+                            <Path key={`f${i}`} d={`${seg.d}L${seg.lastX},${y(Math.max(yMin, 0))}L${seg.firstX},${y(Math.max(yMin, 0))}Z`} fill={s.color} opacity={fill} />
+                          ))}
+                        {style(s) !== 'points' &&
+                          segs.map((seg, i) => (
+                            <Path key={`l${i}`} d={seg.d} stroke={s.color} strokeWidth={s.config.custom?.lineWidth ?? 2} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+                          ))}
+                        {showPoints &&
+                          s.times.map((t, i) =>
+                            s.values[i] == null ? null : (
+                              <Circle key={i} cx={x(t)} cy={y(s.values[i]!)} r={4} fill={s.color} stroke={theme.surface} strokeWidth={2} />
+                            ),
+                          )}
+                      </G>
+                    );
+                  })}
 
-            {series
-              .filter((s) => style(s) !== 'bars')
-              .map((s) => {
-                const fill = (s.config.custom?.fillOpacity ?? 0) / 100;
-                const showPoints =
-                  style(s) === 'points' ||
-                  s.config.custom?.showPoints === 'always' ||
-                  (s.config.custom?.showPoints !== 'never' && s.times.length <= plotW / 14);
-                const segs = segments(s, x, y, s.config.custom?.lineInterpolation === 'stepAfter');
-                return (
-                  <G key={s.key}>
-                    {fill > 0 &&
-                      segs.map((seg, i) => (
-                        <Path key={`f${i}`} d={`${seg.d}L${seg.lastX},${y(Math.max(yMin, 0))}L${seg.firstX},${y(Math.max(yMin, 0))}Z`} fill={s.color} opacity={fill} />
-                      ))}
-                    {style(s) !== 'points' &&
-                      segs.map((seg, i) => (
-                        <Path key={`l${i}`} d={seg.d} stroke={s.color} strokeWidth={s.config.custom?.lineWidth ?? 2} fill="none" strokeLinejoin="round" strokeLinecap="round" />
-                      ))}
-                    {showPoints &&
-                      s.times.map((t, i) =>
-                        s.values[i] == null ? null : (
-                          <Circle key={i} cx={x(t)} cy={y(s.values[i]!)} r={4} fill={s.color} stroke={theme.surface} strokeWidth={2} />
-                        ),
-                      )}
+                {hover && (
+                  <G>
+                    <Line x1={x(hover.time)} x2={x(hover.time)} y1={PAD.top} y2={PAD.top + plotH} stroke={theme.textMuted} strokeWidth={1} />
+                    {hover.rows.map((r) =>
+                      r.value == null ? null : <Circle key={r.key} cx={x(r.time)} cy={y(r.value)} r={5} fill={r.color} stroke={theme.surface} strokeWidth={2} />,
+                    )}
                   </G>
-                );
-              })}
-
-            {hover && (
-              <G>
-                <Line x1={x(hover.time)} x2={x(hover.time)} y1={PAD.top} y2={PAD.top + plotH} stroke={theme.textMuted} strokeWidth={1} />
-                {hover.rows.map((r) =>
-                  r.value == null ? null : <Circle key={r.key} cx={x(r.time)} cy={y(r.value)} r={5} fill={r.color} stroke={theme.surface} strokeWidth={2} />,
                 )}
               </G>
-            )}
-          </Svg>
-        )}
-        {hover && (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.tooltip,
-              { backgroundColor: theme.surface, borderColor: theme.border },
-              x(hover.time) > size.width / 2 ? { right: size.width - x(hover.time) + 8 } : { left: x(hover.time) + 8 },
-            ]}
-          >
-            <Text style={[styles.tooltipTime, { color: theme.textMuted }]}>
-              {numericX ? formatValue(hover.time, xConfig) : formatTooltipTime(hover.time)}
-            </Text>
-            {hover.rows.map((r) => (
-              <View key={r.key} style={styles.tooltipRow}>
-                <View style={[styles.swatch, { backgroundColor: r.color }]} />
-                <Text style={[styles.tooltipName, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {r.name}
-                </Text>
-                <Text style={[styles.tooltipValue, { color: theme.text }]}>{formatValue(r.value, r.config)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+            </Svg>
+          )}
+          {xZoom && !preview && (
+            <Pressable
+              onPress={() => setXZoom(null)}
+              accessibilityRole="button"
+              hitSlop={8}
+              style={({ pressed }) => [styles.reset, { backgroundColor: theme.surface, borderColor: theme.border }, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={[styles.resetText, { color: theme.accent }]}>Reset zoom</Text>
+            </Pressable>
+          )}
+          {hover && (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.tooltip,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+                x(hover.time) > size.width / 2 ? { right: size.width - x(hover.time) + 8 } : { left: x(hover.time) + 8 },
+              ]}
+            >
+              <Text style={[styles.tooltipTime, { color: theme.textMuted }]}>
+                {numericX ? formatValue(hover.time, xConfig) : formatTooltipTime(hover.time)}
+              </Text>
+              {hover.rows.map((r) => (
+                <View key={r.key} style={styles.tooltipRow}>
+                  <View style={[styles.swatch, { backgroundColor: r.color }]} />
+                  <Text style={[styles.tooltipName, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {r.name}
+                  </Text>
+                  <Text style={[styles.tooltipValue, { color: theme.text }]}>{formatValue(r.value, r.config)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
       </View>
       {showLegend(panel, series.length) && <Legend items={series} />}
     </View>
@@ -263,6 +341,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
+  reset: { position: 'absolute', top: 4, right: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth },
+  resetText: { fontSize: 11, fontWeight: '600' },
   tooltipTime: { fontSize: 11, marginBottom: 3 },
   tooltipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   swatch: { width: 10, height: 3, borderRadius: 2 },

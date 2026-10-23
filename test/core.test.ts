@@ -15,6 +15,7 @@ import {
   formatLocalDateTime,
   timeExprError,
   describeRange,
+  zoomRange,
   queryPanel,
   reduce,
   resolveFieldConfig,
@@ -105,6 +106,23 @@ describe('time', () => {
     expect(timeExprError('2026-03-01')).toBeNull();
     expect(timeExprError('')).toBe('Required');
     expect(timeExprError('last tuesday')).toMatch(/Use a date/);
+  });
+  it('zooms a range around the pinch point', () => {
+    const r = { from: 0, to: 100 * 60_000 };
+    // Spreading 2x around the middle halves the span, centered.
+    expect(zoomRange(r, 2, 0.5, 0.5)).toEqual({ from: 25 * 60_000, to: 75 * 60_000 });
+    // Around the left edge, the start stays put.
+    expect(zoomRange(r, 2, 0, 0)).toEqual({ from: 0, to: 50 * 60_000 });
+    // Moving the fingers without spreading them pans: the time under them follows.
+    expect(zoomRange(r, 1, 0.5, 0.25)).toEqual({ from: 25 * 60_000, to: 125 * 60_000 });
+    // Clamps the span and the end.
+    expect(zoomRange(r, 1000, 0.5, 0.5).to - zoomRange(r, 1000, 0.5, 0.5).from).toBe(60_000);
+    expect(zoomRange(r, 0.5, 0.5, 0.5, { maxTo: r.to })).toEqual({ from: -100 * 60_000, to: r.to });
+    // A numeric axis can be kept inside the data's extent.
+    const ext = { minSpan: 0.01, maxSpan: 10, minFrom: 0, maxTo: 10 };
+    expect(zoomRange({ from: 0, to: 10 }, 0.5, 0.5, 0.5, ext)).toEqual({ from: 0, to: 10 });
+    expect(zoomRange({ from: 0, to: 10 }, 4, 0.1, 0.1, ext)).toEqual({ from: 0.75, to: 3.25 });
+    expect(zoomRange({ from: 0, to: 2.5 }, 1, 0.5, 0.9, ext)).toEqual({ from: 0, to: 2.5 });
   });
   it('describes ranges', () => {
     expect(describeRange({ from: 'now-7d', to: 'now' }, now)).toBe('7d');
