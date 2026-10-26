@@ -1,3 +1,4 @@
+import { formatClock } from './inputs';
 import type { FieldConfig, MappingResult, ThresholdStep } from './schema';
 
 /** Value formatting for the Grafana units people actually use. Unknown units fall back to "short". */
@@ -36,6 +37,9 @@ export function formatValue(value: number | null | undefined, config: FieldConfi
       return duration(value * 1000, d);
     case 'dtdurations':
       return duration(value * 1000, d);
+    case 'clocks':
+      // Seconds as a lap time, MM:SS.hh (Grafana shows HH:mm:ss).
+      return formatClock(value);
     case 'celsius':
       return `${fixed(value, d ?? 1)}°C`;
     case 'fahrenheit':

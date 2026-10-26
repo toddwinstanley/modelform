@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DataFrame, Panel } from '../src/core';
-import { barAxes, barCategory, categoryLabels } from '../src/ui/chart';
+import { barAxes, barCategory, barFraction, categoryLabels } from '../src/ui/chart';
 
 const day = 86_400_000;
 const t0 = Date.UTC(2026, 9, 14);
@@ -58,4 +58,13 @@ describe('bar chart axes', () => {
 
 it('drops ticks above a set max', () => {
   expect(barAxes([{ max: 90 }], [[10]], 4)[0].ticks).toEqual([0, 25, 50, 75]);
+});
+
+it('extends the axis below 0 for negative values, and raises it to a set min', () => {
+  const balance = barAxes([{}], [[-2, 1.5, 3]], 4)[0];
+  expect([balance.bottom, balance.top]).toEqual([-2, 4]);
+  expect(barFraction(balance, 0)).toBeCloseTo(1 / 3);
+  const laps = barAxes([{ min: 90 }], [[92.4, 95.1]], 4)[0];
+  expect(laps.bottom).toBe(90);
+  expect(laps.ticks[0]).toBeGreaterThanOrEqual(90);
 });

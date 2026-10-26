@@ -70,6 +70,8 @@ export interface BarAxis {
   ticks: number[];
   /** The value at the top of the plot. */
   top: number;
+  /** The value at the bottom of the plot: 0 unless a value or `min` is negative, or `min` raises it. */
+  bottom: number;
   /** Config of the axis's first field, for tick formatting. */
   config: FieldConfig;
   /** `custom.axisLabel` of the axis's first field that has one. */
@@ -89,18 +91,22 @@ export function barAxes(configs: FieldConfig[], values: (number | null)[][], tic
     const fields = configs.map((_, i) => i).filter((i) => (placement(configs[i]) === 'right') === (side === 'right'));
     if (!fields.length) return [];
     const config = configs[fields[0]];
-    const max = Math.max(0, ...fields.flatMap((i) => values[i].map((v) => v ?? 0)));
-    const min = Math.min(0, config.min ?? 0);
+    const all = fields.flatMap((i) => values[i].map((v) => v ?? 0));
+    const max = Math.max(0, ...all);
+    // Bars grow from 0, so the axis includes it unless `min` sets a floor above it.
+    const min = config.min ?? Math.min(0, ...all);
     // An empty or all-zero axis still gets a 0..1 scale rather than ticks around zero.
     const ticks = niceTicks(min, config.max ?? Math.max(max, min + 1), tickCount);
     const top = config.max ?? ticks[ticks.length - 1];
+    const bottom = config.min ?? ticks[0];
     return [
       {
         side,
         fields,
         // A max that isn't a round number cuts the top tick off rather than drawing it above the plot.
-        ticks: ticks.filter((t) => t <= top),
+        ticks: ticks.filter((t) => t <= top && t >= bottom),
         top,
+        bottom,
         config,
         label: fields.map((i) => configs[i].custom?.axisLabel as string | undefined).find((l) => !!l),
         show: fields.some((i) => placement(configs[i]) !== 'hidden'),
@@ -202,4 +208,9 @@ export function yDomain(series: StyledSeries[], includeZero: boolean): [number, 
   const cfgMin = series.find((s) => s.config.min != null)?.config.min;
   const cfgMax = series.find((s) => s.config.max != null)?.config.max;
   return [cfgMin ?? min, cfgMax ?? max];
+}
+
+/** Where a value sits on a bar axis, from 0 (bottom of the plot) to 1 (top). */
+export function barFraction(axis: Pick<BarAxis, 'top' | 'bottom'>, v: number): number {
+  return Math.min(1, Math.max(0, (v - axis.bottom) / (axis.top - axis.bottom || 1)));
 }

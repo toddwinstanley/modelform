@@ -4,7 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { formatValue } from '../../core/format';
 import { frameLength } from '../../core/frame';
 import { contrastText, cellDisplay, initialSort, nextSort, sortedRows, tableColumns, tableFooter, type TableSort } from '../table';
-import { barAxes, barCategory, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
+import { barAxes, barCategory, barFraction, categoryLabels, reducedValues, tickDecimals, type BarAxis } from '../chart';
 import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
 import { Legend, NoData, useLayout, type PanelProps } from './common';
@@ -228,7 +228,7 @@ export function BarChartPanel({ panel, frames, width }: PanelProps) {
         axis.ticks.map((t) => (
           <Text
             key={t}
-            style={[styles.tick, { color: theme.textMuted, top: plot.height * (1 - t / axis.top) - 7 }, axis.side === 'left' ? styles.tickLeft : styles.tickRight]}
+            style={[styles.tick, { color: theme.textMuted, top: plot.height * (1 - barFraction(axis, t)) - 7 }, axis.side === 'left' ? styles.tickLeft : styles.tickRight]}
             numberOfLines={1}
           >
             {formatValue(t, { ...axis.config, decimals: tickDecimals(axis.ticks) })}
@@ -251,17 +251,28 @@ export function BarChartPanel({ panel, frames, width }: PanelProps) {
           {gridAxis &&
             plot.height > 0 &&
             gridAxis.ticks.map((t) => (
-              <View key={t} style={[styles.gridLine, { backgroundColor: theme.grid, top: plot.height * (1 - t / gridAxis.top) }]} />
+              <View key={t} style={[styles.gridLine, { backgroundColor: theme.grid, top: plot.height * (1 - barFraction(gridAxis, t)) }]} />
             ))}
           <View style={styles.barchart}>
             {labels.map((_, i) => (
               <View key={i} style={styles.barStack}>
-                {fields.map((f, fi) => (
-                  <View
-                    key={fi}
-                    style={[styles.bar, { height: `${(Math.max(f.values[i] ?? 0, 0) / (axisOf(fi).top || 1)) * 100}%`, backgroundColor: colorAt(fi, i) }]}
-                  />
-                ))}
+                {fields.map((f, fi) => {
+                  // Bars grow from 0 (or the axis floor) up for positive values and down for negative ones.
+                  const axis = axisOf(fi);
+                  const base = barFraction(axis, Math.min(Math.max(0, axis.bottom), axis.top));
+                  const end = barFraction(axis, f.values[i] ?? 0);
+                  return (
+                    <View key={fi} style={styles.barSlot}>
+                      <View
+                        style={[
+                          styles.bar,
+                          end < base && styles.barDown,
+                          { bottom: `${Math.min(base, end) * 100}%`, height: `${Math.abs(end - base) * 100}%`, backgroundColor: colorAt(fi, i) },
+                        ]}
+                      />
+                    </View>
+                  );
+                })}
               </View>
             ))}
           </View>
@@ -309,7 +320,9 @@ const styles = StyleSheet.create({
   barRow: { flex: 1, flexDirection: 'row', paddingTop: 7 },
   barchart: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   barStack: { flex: 1, height: '100%', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2 },
-  bar: { flex: 1, maxWidth: 24, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  barSlot: { flex: 1, maxWidth: 24, height: '100%' },
+  bar: { position: 'absolute', left: 0, right: 0, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  barDown: { borderTopLeftRadius: 0, borderTopRightRadius: 0, borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
   barLabels: { flexDirection: 'row', gap: 2 },
   barLabel: { flex: 1, fontSize: 10, marginTop: 4, textAlign: 'center' },
   gridLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },

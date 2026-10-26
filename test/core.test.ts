@@ -151,6 +151,7 @@ describe('format & thresholds', () => {
     expect(formatValue(12_900)).toBe('12.9K');
     expect(formatValue(0.42, { unit: 'percentunit' })).toBe('42.0%');
     expect(formatValue(1536, { unit: 'bytes' })).toBe('1.5 kB');
+    expect(formatValue(92.45, { unit: 'clocks' })).toBe('01:32.45');
     expect(formatValue(72.25, { unit: 'suffix: bpm', decimals: 0 })).toBe('72 bpm');
     expect(formatValue(null)).toBe('—');
   });
