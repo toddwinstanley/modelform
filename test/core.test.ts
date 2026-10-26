@@ -9,6 +9,8 @@ import {
   MemoryEntryStore,
   LocalDataSource,
   parseClockDigits,
+  textSuggestions,
+  entriesSavedWith,
   parseRange,
   parseTime,
   parseLocalDateTime,
@@ -328,6 +330,24 @@ describe('lap time clock', () => {
     expect(formatClock(59.999)).toBe('01:00.00');
     expect(formatClock(6000)).toBe('100:00.00');
     for (const d of ['13245', '5959', '995999']) expect(formatClock(parseClockDigits(d)!).replace(/\D/g, '')).toBe(d.padStart(6, '0'));
+  });
+});
+
+describe('text suggestions', () => {
+  const t = (metric: string, ts: number, text: string) => ({ id: `${metric}${ts}`, metric, ts, value: null, text });
+  const tracks = [t('track', 1, 'Laguna Seca'), t('track', 2, 'Thunderhill'), t('track', 3, 'laguna seca'), t('track', 4, 'Sonoma')];
+
+  it('offers each value once, most recent first, matching the start of any word', () => {
+    expect(textSuggestions(tracks, '')).toEqual(['Sonoma', 'laguna seca', 'Thunderhill']);
+    expect(textSuggestions(tracks, 'SEC')).toEqual(['laguna seca']);
+    expect(textSuggestions(tracks, 'hill')).toEqual([]);
+    expect(textSuggestions(tracks, 'Sonoma')).toEqual([]);
+    expect(textSuggestions(tracks, '', 2)).toEqual(['Sonoma', 'laguna seca']);
+  });
+
+  it('narrows to values saved alongside another input', () => {
+    const entries = [...tracks, t('config', 1, 'Full'), t('config', 2, 'East'), t('config', 3, 'Short'), t('config', 4, 'Long')];
+    expect(entriesSavedWith(entries, 'config', 'track', 'LAGUNA SECA ').map((e) => e.text)).toEqual(['Full', 'Short']);
   });
 });
 

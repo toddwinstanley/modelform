@@ -39,6 +39,11 @@ export interface InputOptions {
   labels?: string[];
   /** Initial value: a literal, or "last" to start from the most recent entry. */
   default?: number | string | boolean | 'last';
+  /**
+   * "changed" (the default) records the value only when it was edited before Save;
+   * "always" records it on every Save, so a default like "last" is kept with each save.
+   */
+  record?: 'changed' | 'always';
   /** input-select only. */
   choices?: InputChoice[];
   /**
@@ -50,6 +55,14 @@ export interface InputOptions {
   multi?: boolean;
   /** input-counter only: the amount each tap records (default 1). */
   increment?: number;
+  /** input-text only: a single-line field that suggests values recorded earlier, matching what's typed. */
+  suggest?: boolean;
+  /**
+   * input-text with `suggest` only: another input's metric whose current value narrows the
+   * suggestions to values saved alongside it (e.g. configurations of the chosen track).
+   * Falls back to every earlier value when none were.
+   */
+  suggestWith?: string;
 }
 
 export type InputPanel = Panel & { type: InputType; options: InputOptions };
@@ -113,4 +126,36 @@ export function entryToInputValue(panel: InputPanel, entry: Entry | undefined): 
   if (!entry) return null;
   if (panel.type === 'input-toggle') return entry.value === 1;
   return entry.text ?? entry.value;
+}
+
+/**
+ * Earlier text values worth offering for `query`, most recently used first, one per
+ * spelling (ignoring case). Matches words starting with the query; an empty query
+ * matches everything. Leaves out `query` itself once it's typed in full.
+ */
+export function textSuggestions(entries: Entry[], query: string, limit = 8): string[] {
+  const q = query.trim().toLowerCase();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of [...entries].sort((a, b) => b.ts - a.ts)) {
+    const text = e.text?.trim();
+    const key = text?.toLowerCase();
+    if (!text || !key || seen.has(key)) continue;
+    seen.add(key);
+    if (key === q) continue;
+    if (q && !key.startsWith(q) && !key.split(/[\s\-/(]+/).some((w) => w.startsWith(q))) continue;
+    out.push(text);
+    if (out.length === limit) break;
+  }
+  return out;
+}
+
+/**
+ * Entries of `metric` saved together with (at the same time as) a `withMetric` entry
+ * whose text is `withText`, ignoring case.
+ */
+export function entriesSavedWith(entries: Entry[], metric: string, withMetric: string, withText: string): Entry[] {
+  const want = withText.trim().toLowerCase();
+  const times = new Set(entries.filter((e) => e.metric === withMetric && e.text?.trim().toLowerCase() === want).map((e) => e.ts));
+  return entries.filter((e) => e.metric === metric && times.has(e.ts));
 }

@@ -21,8 +21,8 @@ const NO_CHOICES: Record<string, InputChoice[]> = {};
 
 /**
  * A data entry form laid out from dashboard JSON with input-* panels. Edited values are
- * staged until Save, then recorded together at the chosen timestamp. Counters record
- * immediately on tap.
+ * staged until Save, then recorded together at the chosen timestamp, along with any
+ * `record: "always"` inputs. Counters record immediately on tap.
  */
 export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: InputFormProps) {
   const theme = useDashTheme();
@@ -32,19 +32,24 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: I
   const [offsetMs, setOffsetMs] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
 
+  // Reloads as the store changes, so "last" follows each save.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    let run = 0;
+    const load = async () => {
+      const mine = ++run;
       const next: Record<string, InputValue> = {};
       for (const p of panels) {
         const d = p.options.default;
         if (d === 'last') next[p.options.metric] = entryToInputValue(p, await store.latest(p.options.metric));
         else if (d !== undefined) next[p.options.metric] = d;
       }
-      if (!cancelled) setDefaults(next);
-    })();
+      if (mine === run) setDefaults(next);
+    };
+    load();
+    const unsubscribe = store.subscribe(load);
     return () => {
-      cancelled = true;
+      run = -1;
+      unsubscribe();
     };
   }, [panels, store]);
 
@@ -66,14 +71,16 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: I
 
   const save = useCallback(async () => {
     const ts = Date.now() + offsetMs;
-    const entries = panels.filter((p) => p.options.metric in edits).flatMap((p) => toEntries(p, edits[p.options.metric], ts));
+    const entries = panels
+      .filter((p) => p.options.metric in edits || p.options.record === 'always')
+      .flatMap((p) => toEntries(p, state.value(p.options.metric), ts));
     if (!entries.length) return;
     const added = await store.add(entries);
     setEdits({});
     setOffsetMs(0);
     setStatus(`Saved ${entries.length} ${entries.length === 1 ? 'value' : 'values'}`);
     onSaved?.(added.length, added);
-  }, [panels, edits, offsetMs, store, onSaved]);
+  }, [panels, edits, state, offsetMs, store, onSaved]);
 
   return (
     <InputFormContext.Provider value={state}>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { formatClock, parseClockDigits, type InputPanel, type InputValue } from '../../core/inputs';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { entriesSavedWith, formatClock, parseClockDigits, textSuggestions, type Entry, type InputPanel, type InputValue } from '../../core/inputs';
 import { startOf } from '../../core/time';
 import { Chip } from '../Toolbar';
 import { useDashTheme } from '../theme';
@@ -29,7 +29,7 @@ export function InputPanelBody({ panel }: { panel: InputPanel }) {
     case 'input-rating':
       return <RatingInput {...props} />;
     case 'input-text':
-      return <FreeTextInput {...props} />;
+      return panel.options.suggest ? <SuggestTextInput {...props} /> : <FreeTextInput {...props} />;
     case 'input-counter':
       return <CounterInput panel={panel} />;
     case 'input-duration':
@@ -309,6 +309,74 @@ function FreeTextInput({ panel, value, onChange }: InputProps) {
   );
 }
 
+/**
+ * One line of text with earlier values offered as chips underneath: the most recent
+ * ones to start with, then those matching what's typed. Tapping one fills the field.
+ */
+function SuggestTextInput({ panel, value, onChange }: InputProps) {
+  const theme = useDashTheme();
+  const form = useInputForm();
+  const { metric, suggestWith, placeholder } = panel.options;
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [typed, setTyped] = useState(false);
+  const text = typeof value === 'string' ? value : '';
+
+  const { store } = form;
+  useEffect(() => {
+    let run = 0;
+    const load = () => {
+      const mine = ++run;
+      store.list({ metrics: suggestWith ? [metric, suggestWith] : [metric] }).then((rows) => mine === run && setEntries(rows));
+    };
+    load();
+    const unsubscribe = store.subscribe(load);
+    return () => {
+      run = -1;
+      unsubscribe();
+    };
+  }, [store, metric, suggestWith]);
+
+  const withText = suggestWith ? form.value(suggestWith) : null;
+  const own = entries.filter((e) => e.metric === metric);
+  const scoped = suggestWith && typeof withText === 'string' && withText.trim() ? entriesSavedWith(entries, metric, suggestWith, withText) : [];
+  // Until something's typed, offer the other recent values rather than filtering by the default.
+  const query = typed ? text : '';
+  const fromScoped = textSuggestions(scoped, query);
+  const suggestions = (fromScoped.length ? fromScoped : textSuggestions(own, query)).filter((s) => s.toLowerCase() !== text.trim().toLowerCase());
+
+  return (
+    <View style={styles.suggest}>
+      <TextInput
+        value={text}
+        onChangeText={(t) => {
+          setTyped(!!t);
+          onChange(t || null);
+        }}
+        placeholder={placeholder ?? 'Type here'}
+        placeholderTextColor={theme.textMuted}
+        style={[styles.textLine, { color: theme.text, borderColor: theme.border }]}
+        accessibilityLabel={panel.title}
+        autoCorrect={false}
+        autoCapitalize="words"
+        returnKeyType="done"
+        selectTextOnFocus
+      />
+      <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wrap}>
+        {suggestions.map((s) => (
+          <Chip
+            key={s}
+            label={s}
+            onPress={() => {
+              setTyped(false);
+              onChange(s);
+            }}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 /** Records immediately on each tap and shows today's total. */
 function CounterInput({ panel }: { panel: InputPanel }) {
   const theme = useDashTheme();
@@ -376,6 +444,8 @@ const styles = StyleSheet.create({
   toggleRow: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   rating: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   ratingDot: { flex: 1, maxWidth: 52, aspectRatio: 1, borderRadius: 26, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  suggest: { flex: 1, gap: 8 },
+  textLine: { height: 44, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 0, fontSize: 16 },
   textArea: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 15, textAlignVertical: 'top' },
   counter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   counterValue: { fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] },
