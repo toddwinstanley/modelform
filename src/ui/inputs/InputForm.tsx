@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { entryToInputValue, inputPanels, toEntries, type Entry, type InputChoice, type InputValue } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
@@ -15,6 +15,10 @@ export interface InputFormProps {
   onSaved?(count: number, entries: Entry[]): void;
   /** Choice lists for input-select panels that set `choicesFrom`, keyed by that name. */
   choices?: Record<string, InputChoice[]>;
+  /** Shown above the panels in place of the "Recording for" time picker. */
+  header?: ReactNode;
+  /** With `header`: the time to record a Save at (default now). */
+  timestamp?(): number;
 }
 
 const NO_CHOICES: Record<string, InputChoice[]> = {};
@@ -24,7 +28,7 @@ const NO_CHOICES: Record<string, InputChoice[]> = {};
  * staged until Save, then recorded together at the chosen timestamp, along with any
  * `record: "always"` inputs. Counters record immediately on tap.
  */
-export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: InputFormProps) {
+export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp }: InputFormProps) {
   const theme = useDashTheme();
   const panels = useMemo(() => inputPanels(dashboard), [dashboard]);
   const [defaults, setDefaults] = useState<Record<string, InputValue>>({});
@@ -70,7 +74,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: I
   const dirty = Object.keys(edits).length;
 
   const save = useCallback(async () => {
-    const ts = Date.now() + offsetMs;
+    const ts = header !== undefined ? (timestamp?.() ?? Date.now()) : Date.now() + offsetMs;
     const entries = panels
       .filter((p) => p.options.metric in edits || p.options.record === 'always')
       .flatMap((p) => toEntries(p, state.value(p.options.metric), ts));
@@ -80,13 +84,13 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES }: I
     setOffsetMs(0);
     setStatus(`Saved ${entries.length} ${entries.length === 1 ? 'value' : 'values'}`);
     onSaved?.(added.length, added);
-  }, [panels, edits, state, offsetMs, store, onSaved]);
+  }, [panels, edits, state, offsetMs, store, onSaved, header, timestamp]);
 
   return (
     <InputFormContext.Provider value={state}>
       <DashboardProvider dashboard={dashboard}>
         <DashboardView
-          header={<TimestampPicker offsetMs={offsetMs} onChange={setOffsetMs} />}
+          header={header !== undefined ? header : <TimestampPicker offsetMs={offsetMs} onChange={setOffsetMs} />}
           footer={
             <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
               <Text style={[styles.status, { color: theme.textSecondary }]}>

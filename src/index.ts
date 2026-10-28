@@ -5,6 +5,7 @@ export { DashboardProvider, useDashboard, usePanelData, type DashboardProviderPr
 export { DashboardView, PanelCard, type DashboardViewProps } from './ui/DashboardView';
 export { DashboardToolbar, Chip } from './ui/Toolbar';
 export { InputForm, type InputFormProps } from './ui/inputs/InputForm';
+export { Calendar } from './ui/TimeRangeSheet';
 export { useInputForm } from './ui/inputs/formContext';
 export { registerPanel } from './ui/panels/registry';
 export { Legend, NoData, type PanelProps } from './ui/panels/common';

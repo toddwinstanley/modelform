@@ -197,7 +197,8 @@ function TimeField({
   );
 }
 
-function Calendar({
+/** A month of days to pick from; `from`..`to` are highlighted (pass the same day for one). */
+export function Calendar({
   month,
   onMonth,
   from,
