@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { checkFiles, formatJsonText, locate, parseJsonText, setJsonValue, splitPath } from '../src/core';
+import { describe, expect, it, vi } from 'vitest';
+import { checkFiles, formatJsonText, HttpConfigFiles, locate, parseJsonText, SaveConflictError, setJsonValue, splitPath } from '../src/core';
 
 const manifest = (documents: object, tabs?: object[]) =>
   JSON.stringify(
@@ -86,5 +86,36 @@ describe('text edits', () => {
     expect(formatJsonText('{"a":')).toBe('{"a":');
     const text = '{\n  "documents": {\n    "a": "a.json"\n  }\n}';
     expect(setJsonValue(text, ['documents', 'b'], 'b.json')).toBe('{\n  "documents": {\n    "a": "a.json",\n    "b": "b.json"\n  }\n}');
+  });
+});
+
+describe('HttpConfigFiles', () => {
+  it('saves against the revision it read, and reports a conflict', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const responses: Response[] = [
+      new Response('{}', { status: 200, headers: { ETag: '"3"' } }), // read
+      new Response('{}', { status: 200, headers: { ETag: '"4"' } }), // save
+      new Response('{"error":"stale"}', { status: 412 }), // save again, someone else saved
+      new Response(null, { status: 201, headers: { ETag: '"1"' } }), // new file
+    ];
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, init });
+      return responses.shift()!;
+    });
+    try {
+      const files = new HttpConfigFiles('https://api.test/v1/configs/c1/files/app.json', () => 'tok');
+      await files.read('forms/a.json');
+      await files.write('forms/a.json', '{}');
+      await expect(files.write('forms/a.json', '{}')).rejects.toBeInstanceOf(SaveConflictError);
+      await files.write('forms/new.json', '{}');
+      expect(calls.map((c) => [c.url, (c.init.headers as Record<string, string>) ?? {}])).toEqual([
+        ['https://api.test/v1/configs/c1/files/forms/a.json', { Authorization: 'Bearer tok' }],
+        ['https://api.test/v1/configs/c1/files/forms/a.json', { Authorization: 'Bearer tok', 'If-Match': '"3"', 'Content-Type': 'application/json' }],
+        ['https://api.test/v1/configs/c1/files/forms/a.json', { Authorization: 'Bearer tok', 'If-Match': '"4"', 'Content-Type': 'application/json' }],
+        ['https://api.test/v1/configs/c1/files/forms/new.json', { Authorization: 'Bearer tok', 'If-None-Match': '*', 'Content-Type': 'application/json' }],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

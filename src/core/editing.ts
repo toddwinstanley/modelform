@@ -8,7 +8,7 @@ import { isInputType } from './inputs';
 import { applyJsonEdits } from './jsonEdit';
 import { LOCAL_DATASOURCE_TYPE } from './local';
 import type { Panel } from './schema';
-import { assembleBundle, resolveUrl, type ConfigIssue } from './manifest';
+import { assembleBundle, resolveUrl, type ConfigIssue, type FetchJson } from './manifest';
 
 export interface Located {
   /** Character offset and length of the text the issue is about. */
@@ -220,41 +220,80 @@ export interface ConfigFiles {
   /** The manifest's own path, e.g. "app.json". */
   readonly manifestPath: string;
   read(path: string): Promise<string>;
-  write(path: string, text: string): Promise<void>;
+  /** `force` saves even if the file changed elsewhere since it was read. */
+  write(path: string, text: string, options?: { force?: boolean }): Promise<void>;
+}
+
+/** Supplies the bearer token for a request, or nothing to send none. Called per request, so it can refresh. */
+export type TokenSource = () => Promise<string | null | undefined> | string | null | undefined;
+
+/** A save refused because the file was saved elsewhere after it was read. */
+export class SaveConflictError extends Error {
+  constructor(readonly path: string) {
+    super(`${path} was saved somewhere else since you opened it`);
+  }
+}
+
+async function authHeaders(token?: TokenSource): Promise<Record<string, string>> {
+  const t = await token?.();
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
 /**
- * Files served over HTTP next to the manifest: GET to read, PUT to save. The dev config
- * server (tools/config-server.mjs) speaks this; so should the config backend.
+ * Files served over HTTP next to the manifest: GET to read, PUT to save. The API and the dev
+ * config server both speak this. Where the server gives revisions (ETags, as the API does),
+ * a save only goes through if the file hasn't been saved elsewhere since it was read here;
+ * otherwise it throws SaveConflictError, unless `force` is set.
  */
 export class HttpConfigFiles implements ConfigFiles {
   readonly manifestPath: string;
+  /** The revision of each file as last read or saved here. */
+  private revisions = new Map<string, string>();
 
   constructor(
     private manifestUrl: string,
-    private token?: string,
+    private token?: TokenSource,
   ) {
     this.manifestPath = manifestUrl.replace(/[?#].*$/, '').split('/').pop() || 'app.json';
   }
 
-  private headers(): Record<string, string> {
-    return this.token ? { Authorization: `Bearer ${this.token}` } : {};
-  }
-
   async read(path: string) {
-    const res = await fetch(resolveUrl(this.manifestUrl, path), { headers: this.headers(), cache: 'no-store' });
+    const res = await fetch(resolveUrl(this.manifestUrl, path), { headers: await authHeaders(this.token), cache: 'no-store' });
     if (!res.ok) throw new Error(res.status === 404 ? NOT_FOUND : `HTTP ${res.status}`);
+    const tag = res.headers.get('ETag');
+    if (tag) this.revisions.set(path, tag);
     return res.text();
   }
 
-  async write(path: string, text: string) {
+  async write(path: string, text: string, { force = false }: { force?: boolean } = {}) {
+    const known = this.revisions.get(path);
+    const precondition: Record<string, string> = force ? {} : known ? { 'If-Match': known } : { 'If-None-Match': '*' };
     const res = await fetch(resolveUrl(this.manifestUrl, path), {
       method: 'PUT',
-      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      headers: { ...(await authHeaders(this.token)), ...precondition, 'Content-Type': 'application/json' },
       body: text,
     });
-    if (!res.ok) throw new Error(`Couldn’t save ${path}: ${(await res.text()) || `HTTP ${res.status}`}`);
+    if (res.status === 412) throw new SaveConflictError(path);
+    if (!res.ok) {
+      const body = await res.text();
+      let message = body;
+      try {
+        message = JSON.parse(body).error ?? body;
+      } catch {}
+      throw new Error(`Couldn’t save ${path}: ${message || `HTTP ${res.status}`}`);
+    }
+    const tag = res.headers.get('ETag');
+    if (tag) this.revisions.set(path, tag);
   }
+}
+
+/** A FetchJson that sends a bearer token, for loading configs from the API. */
+export function fetchJsonWithToken(token: TokenSource): FetchJson {
+  return async (url) => {
+    const res = await fetch(url, { headers: { Accept: 'application/json', ...(await authHeaders(token)) }, cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status === 401 ? 'not signed in' : `HTTP ${res.status}`);
+    return JSON.parse(await res.text());
+  };
 }
 
 /** Reads the manifest and every document it gives a path for. Files that can't be read are left out (checkFiles then reports them). */
