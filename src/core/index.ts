@@ -15,3 +15,5 @@ export * from './local';
 export * from './gazetteer';
 export * from './links';
 export * from './manifest';
+export * from './configSchema';
+export * from './editing';

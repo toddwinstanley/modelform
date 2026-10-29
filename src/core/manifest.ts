@@ -14,21 +14,37 @@
  *
  * A document is either a path (relative to the manifest's URL) or the dashboard inlined.
  */
+import { dashboardSchemaIssues, manifestSchemaIssues } from './configSchema';
 import { inputPanels } from './inputs';
 import type { Dashboard } from './schema';
 
 export const MANIFEST_VERSION = 1;
 
+/** The root of an app config: navigation, plus the documents it shows. Annotations here feed schema/app.schema.json. */
 export interface AppManifest {
+  /** Format version. Always 1 for now. */
   version: number;
+  /**
+   * The app's name.
+   * @minLength 1
+   */
   title: string;
+  /**
+   * The bottom tabs, in order.
+   * @minItems 1
+   */
   tabs: Tab[];
+  /** Dashboards and forms by id: a path relative to this file, or the dashboard JSON inline. */
   documents: Record<string, string | Dashboard>;
 }
 
 export interface Tab {
-  /** Also the tab's route, so keep it URL-safe and stable. */
+  /**
+   * Also the tab's route, so keep it URL-safe and stable.
+   * @pattern ^[A-Za-z0-9_-]+$
+   */
   id: string;
+  /** @minLength 1 */
   title: string;
   /** A name from the app's icon set (e.g. "edit", "chart"), or per-platform symbol names. */
   icon?: string | { ios?: string; android?: string; web?: string };
@@ -39,7 +55,11 @@ export type Screen =
   /** One dashboard. */
   | { type: 'dashboard'; dashboard: string }
   /** Input forms, picked with chips when there's more than one. */
-  | { type: 'forms'; forms: string[] }
+  | {
+      type: 'forms';
+      /** @minItems 1 */
+      forms: string[];
+    }
   /** A list that opens dashboards and forms. */
   | { type: 'menu'; items: MenuItem[] };
 
@@ -47,8 +67,9 @@ export interface MenuItem {
   /** Defaults to the document's title. */
   title?: string;
   description?: string;
-  /** Exactly one of these. */
+  /** A dashboard to open. Give this or `form`, not both. */
   dashboard?: string;
+  /** A form to open. Give this or `dashboard`, not both. */
   form?: string;
 }
 
@@ -68,58 +89,32 @@ export interface ConfigIssue {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 
-/** Checks the manifest's own shape. Document references are checked by validateBundle once documents are loaded. */
+/**
+ * Checks the manifest's own shape against schema/app.schema.json, plus what the schema can't
+ * say. Inline documents are left to validateDashboard, and document references to
+ * validateBundle once documents are loaded.
+ */
 export function validateManifest(json: unknown, file = 'manifest'): ConfigIssue[] {
+  const error = (path: string, message: string): ConfigIssue => ({ severity: 'error', path: `${file}: ${path}`, message });
+  const shape = manifestSchemaIssues(json).filter((i) => !/^documents\.[^.[]+[.[]/.test(i.path));
+  if (shape.length) return shape.map((i) => error(i.path, i.message));
   const issues: ConfigIssue[] = [];
-  const error = (path: string, message: string) => issues.push({ severity: 'error', path: `${file}: ${path}`, message });
-  if (!isObject(json)) {
-    error('(root)', 'must be a JSON object');
-    return issues;
-  }
-  if (json.version !== MANIFEST_VERSION) error('version', `must be ${MANIFEST_VERSION}`);
-  if (!nonEmptyString(json.title)) error('title', 'must be a non-empty string');
-  if (!isObject(json.documents)) error('documents', 'must be an object of id → path or dashboard');
-  else
-    for (const [id, d] of Object.entries(json.documents))
-      if (!nonEmptyString(d) && !isObject(d)) error(`documents.${id}`, 'must be a path or an inline dashboard');
-  if (!Array.isArray(json.tabs) || !json.tabs.length) {
-    error('tabs', 'must be a non-empty array');
-    return issues;
-  }
   const ids = new Set<string>();
-  json.tabs.forEach((tab, i) => {
-    const at = `tabs[${i}]`;
-    if (!isObject(tab)) return error(at, 'must be an object');
-    if (!nonEmptyString(tab.id) || !/^[\w-]+$/.test(tab.id)) error(`${at}.id`, 'must be letters, digits, - or _');
-    else if (ids.has(tab.id)) error(`${at}.id`, `"${tab.id}" is used by another tab`);
-    else ids.add(tab.id);
-    if (!nonEmptyString(tab.title)) error(`${at}.title`, 'must be a non-empty string');
-    const s = tab.screen;
-    if (!isObject(s)) return error(`${at}.screen`, 'must be an object');
-    switch (s.type) {
-      case 'dashboard':
-        if (!nonEmptyString(s.dashboard)) error(`${at}.screen.dashboard`, 'must be a document id');
-        break;
-      case 'forms':
-        if (!Array.isArray(s.forms) || !s.forms.length || !s.forms.every(nonEmptyString))
-          error(`${at}.screen.forms`, 'must be a non-empty array of document ids');
-        break;
-      case 'menu':
-        if (!Array.isArray(s.items)) error(`${at}.screen.items`, 'must be an array');
-        else
-          s.items.forEach((item, j) => {
-            if (!isObject(item) || nonEmptyString(item.dashboard) === nonEmptyString(item.form))
-              error(`${at}.screen.items[${j}]`, 'must have either "dashboard" or "form"');
-          });
-        break;
-      default:
-        error(`${at}.screen.type`, 'must be "dashboard", "forms" or "menu"');
-    }
+  (json as AppManifest).tabs.forEach((tab, i) => {
+    if (ids.has(tab.id)) issues.push(error(`tabs[${i}].id`, `"${tab.id}" is used by another tab`));
+    ids.add(tab.id);
+    if (tab.screen.type === 'menu')
+      tab.screen.items.forEach((item, j) => {
+        if (!item.dashboard === !item.form) issues.push(error(`tabs[${i}].screen.items[${j}]`, 'needs either "dashboard" or "form"'));
+      });
   });
   return issues;
 }
 
-/** Checks a dashboard or form well enough that rendering it won't throw. */
+/**
+ * Checks a dashboard or form. Errors are what would stop it rendering; anything else the
+ * schema flags is a warning, since Grafana exports often carry values dashkit just ignores.
+ */
 export function validateDashboard(json: unknown, file: string): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   const error = (path: string, message: string) => issues.push({ severity: 'error', path: `${file}: ${path}`, message });
@@ -128,19 +123,22 @@ export function validateDashboard(json: unknown, file: string): ConfigIssue[] {
     return issues;
   }
   if (typeof json.title !== 'string') error('title', 'must be a string');
-  if (!Array.isArray(json.panels)) {
-    error('panels', 'must be an array');
-    return issues;
-  }
-  json.panels.forEach((p, i) => {
-    if (!isObject(p)) return error(`panels[${i}]`, 'must be an object');
-    if (typeof p.type !== 'string') error(`panels[${i}].type`, 'must be a string');
-    const g = p.gridPos;
-    if (!isObject(g) || !['x', 'y', 'w', 'h'].every((k) => typeof g[k] === 'number'))
-      error(`panels[${i}].gridPos`, 'must have numeric x, y, w and h');
-    if (typeof p.type === 'string' && p.type.startsWith('input-') && !nonEmptyString((p.options as Record<string, unknown>)?.metric))
-      error(`panels[${i}].options.metric`, `${p.type} needs a metric to record to`);
-  });
+  if (!Array.isArray(json.panels)) error('panels', 'must be an array');
+  else
+    json.panels.forEach((p, i) => {
+      if (!isObject(p)) return error(`panels[${i}]`, 'must be an object');
+      if (typeof p.type !== 'string') error(`panels[${i}].type`, 'must be a string');
+      const g = p.gridPos;
+      if (!isObject(g) || !['x', 'y', 'w', 'h'].every((k) => typeof g[k] === 'number'))
+        error(`panels[${i}].gridPos`, 'must have numeric x, y, w and h');
+      if (typeof p.type === 'string' && p.type.startsWith('input-') && !nonEmptyString((p.options as Record<string, unknown>)?.metric))
+        error(`panels[${i}].options.metric`, `${p.type} needs a metric to record to`);
+    });
+  // Skip schema findings already covered by an error at or around the same spot.
+  const covered = issues.map((i) => i.path.slice(file.length + 2));
+  const near = (a: string, b: string) => a === b || a.startsWith(`${b}.`) || a.startsWith(`${b}[`) || b.startsWith(`${a}.`) || b.startsWith(`${a}[`);
+  for (const w of dashboardSchemaIssues(json))
+    if (!covered.some((c) => near(w.path, c))) issues.push({ severity: 'warning', path: `${file}: ${w.path}`, message: w.message });
   return issues;
 }
 
@@ -166,6 +164,8 @@ export function validateBundle(bundle: ConfigBundle, file = 'manifest'): ConfigI
   const issues: ConfigIssue[] = [];
   for (const ref of references(bundle.manifest)) {
     const doc = bundle.documents[ref.id];
+    // Listed but failed to load: that failure is already reported.
+    if (!doc && ref.id in bundle.manifest.documents) continue;
     if (!doc) issues.push({ severity: 'error', path: `${file}: ${ref.path}`, message: `no document "${ref.id}" in documents` });
     else if (ref.kind === 'form' && !inputPanels(doc).length)
       issues.push({ severity: 'warning', path: `${file}: ${ref.path}`, message: `"${ref.id}" has no input-* panels to fill in` });

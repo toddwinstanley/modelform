@@ -49,20 +49,36 @@ describe('validateManifest', () => {
       documents: { a: 5 },
       tabs: [
         { id: 'x y', title: 'A', screen: { type: 'dashboard' } },
-        { id: 'b', title: 'B', screen: { type: 'menu', items: [{ dashboard: 'a', form: 'b' }] } },
-        { id: 'b', title: 'C', screen: { type: 'nope' } },
+        { id: 'b', title: 'B', screen: { type: 'forms', forms: [], extra: true } },
+        { id: 'c', title: 'C', screen: { type: 'nope' } },
       ],
     };
-    expect(validateManifest(bad, 'app.json').map((i) => i.path)).toEqual([
-      'app.json: version',
-      'app.json: title',
-      'app.json: documents.a',
-      'app.json: tabs[0].id',
-      'app.json: tabs[0].screen.dashboard',
-      'app.json: tabs[1].screen.items[0]',
-      'app.json: tabs[2].id',
-      'app.json: tabs[2].screen.type',
+    expect(validateManifest(bad, 'app.json').map((i) => `${i.path} ${i.message}`)).toEqual([
+      'app.json: documents.a must be object or string',
+      'app.json: tabs[0].id must match ^[A-Za-z0-9_-]+$',
+      'app.json: tabs[0].screen.dashboard is required',
+      'app.json: tabs[1].screen.extra is not a known key',
+      'app.json: tabs[1].screen.forms must not be empty',
+      'app.json: tabs[2].screen.type must be "dashboard", "forms" or "menu"',
+      'app.json: title must not be empty',
+      'app.json: version must be 1',
     ]);
+  });
+
+  it('checks what the schema cannot, once the shape is right', () => {
+    const m = {
+      ...manifest,
+      tabs: [...manifest.tabs, { id: 'log', title: 'Again', screen: { type: 'menu', items: [{ dashboard: 'charts', form: 'daily' }, {}] } }],
+    };
+    expect(validateManifest(m, 'app.json').map((i) => `${i.path} ${i.message}`)).toEqual([
+      'app.json: tabs[2].id "log" is used by another tab',
+      'app.json: tabs[2].screen.items[0] needs either "dashboard" or "form"',
+      'app.json: tabs[2].screen.items[1] needs either "dashboard" or "form"',
+    ]);
+  });
+
+  it('leaves inline documents to the dashboard checks', () => {
+    expect(validateManifest({ ...manifest, documents: { daily: { title: 'X', panels: 'no' } } })).toEqual([]);
   });
 });
 
@@ -86,7 +102,6 @@ describe('fetchBundle', () => {
     expect(bundle).toBeUndefined();
     expect(issues.map((i) => `${i.severity} ${i.path}`)).toEqual([
       'error ../shared/charts.json',
-      'error app.json: tabs[1].screen.dashboard',
       'error app.json: tabs[2].screen.items[0].form',
     ]);
   });
@@ -126,7 +141,7 @@ describe('ConfigLoader', () => {
     await loader.refresh();
     expect(loader.state.bundle?.manifest.title).toBe('Test');
     expect(loader.state.error).toBe('1 error');
-    expect(loader.state.issues[0]).toMatchObject({ path: 'app.json: tabs', message: 'must be a non-empty array' });
+    expect(loader.state.issues[0]).toMatchObject({ path: 'app.json: tabs', message: 'must not be empty' });
   });
 
   it('starts from a cached copy of the same URL only', async () => {

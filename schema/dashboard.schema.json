@@ -1,0 +1,929 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:spaghetti:dashboard",
+  "title": "dashkit dashboard or form",
+  "$ref": "#/definitions/Dashboard",
+  "definitions": {
+    "Dashboard": {
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "panels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Panel"
+          }
+        },
+        "templating": {
+          "type": "object",
+          "properties": {
+            "list": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TemplateVariable"
+              }
+            }
+          },
+          "required": [
+            "list"
+          ]
+        },
+        "time": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "description": "\"browser\" (the default), \"utc\", or an IANA zone such as \"Europe/London\"."
+        },
+        "refresh": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean",
+              "const": false
+            }
+          ]
+        },
+        "__inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "pluginId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ]
+          },
+          "description": "Present on dashboards exported \"for sharing externally\"."
+        }
+      },
+      "required": [
+        "title",
+        "panels"
+      ],
+      "description": "The subset of the Grafana dashboard JSON model that dashkit understands. Unknown keys are tolerated and ignored, so dashboards exported from Grafana load as-is. See https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/view-dashboard-json-model/\n\ndashkit adds two extensions, both of which Grafana ignores:  - `panel.mobile` to tune phone layout per panel  - `input-*` panel types for data entry forms (see inputs.ts)"
+    },
+    "Panel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "examples": [
+            "row",
+            "timeseries",
+            "trend",
+            "xychart",
+            "stat",
+            "gauge",
+            "bargauge",
+            "piechart",
+            "barchart",
+            "table",
+            "text",
+            "geomap",
+            "input-number",
+            "input-slider",
+            "input-select",
+            "input-toggle",
+            "input-rating",
+            "input-text",
+            "input-counter",
+            "input-duration"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "gridPos": {
+          "$ref": "#/definitions/GridPos"
+        },
+        "datasource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DataSourceRef"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Target"
+          }
+        },
+        "fieldConfig": {
+          "type": "object",
+          "properties": {
+            "defaults": {
+              "$ref": "#/definitions/FieldConfig"
+            },
+            "overrides": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/FieldOverride"
+              }
+            }
+          }
+        },
+        "options": {
+          "type": "object"
+        },
+        "transformations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "options": {
+                "type": "object"
+              },
+              "disabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "description": "Applied in order to the query results. See transform.ts for the ones dashkit implements."
+        },
+        "collapsed": {
+          "type": "boolean",
+          "description": "Rows only."
+        },
+        "panels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Panel"
+          },
+          "description": "Rows only: children of a collapsed row live here instead of at the top level."
+        },
+        "repeat": {
+          "type": "string",
+          "description": "Repeat this row (or panel) once per selected value of the named variable."
+        },
+        "repeatDirection": {
+          "type": "string",
+          "enum": [
+            "h",
+            "v"
+          ],
+          "description": "Panel repeats: side by side (`h`, wrapping at maxPerRow) or stacked (`v`)."
+        },
+        "maxPerRow": {
+          "type": "number"
+        },
+        "scopedVars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "value"
+            ]
+          },
+          "description": "Set on each copy of a repeated row or panel: the single value it was repeated for."
+        },
+        "mobile": {
+          "$ref": "#/definitions/MobileOptions"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DataLink"
+          },
+          "description": "Panel links, from the panel header menu in Grafana."
+        }
+      },
+      "required": [
+        "type",
+        "gridPos"
+      ],
+      "additionalProperties": {},
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "pattern": "^input-"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "options"
+            ],
+            "properties": {
+              "options": {
+                "$ref": "#/definitions/InputOptions"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GridPos": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number"
+        },
+        "h": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ]
+    },
+    "DataSourceRef": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string"
+        }
+      }
+    },
+    "Target": {
+      "type": "object",
+      "properties": {
+        "refId": {
+          "type": "string"
+        },
+        "datasource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DataSourceRef"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hide": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "refId"
+      ],
+      "additionalProperties": {},
+      "description": "A panel query. Everything besides refId/datasource is datasource-specific and passed through untouched."
+    },
+    "FieldConfig": {
+      "type": "object",
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "decimals": {
+          "type": "number"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "color": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string"
+            },
+            "fixedColor": {
+              "type": "string"
+            }
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "absolute",
+                "percentage"
+              ]
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ThresholdStep"
+              }
+            }
+          },
+          "required": [
+            "steps"
+          ]
+        },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ValueMapping"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DataLink"
+          },
+          "description": "Data links: opened from a point, cell or value of this field."
+        },
+        "custom": {
+          "type": "object",
+          "properties": {
+            "drawStyle": {
+              "type": "string",
+              "enum": [
+                "line",
+                "bars",
+                "points"
+              ]
+            },
+            "lineWidth": {
+              "type": "number"
+            },
+            "fillOpacity": {
+              "type": "number"
+            },
+            "showPoints": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ]
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {}
+    },
+    "ThresholdStep": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "color": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "color"
+      ]
+    },
+    "ValueMapping": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "value"
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/MappingResult"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "range"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "to": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "result": {
+                  "$ref": "#/definitions/MappingResult"
+                }
+              },
+              "required": [
+                "result"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "regex"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                },
+                "result": {
+                  "$ref": "#/definitions/MappingResult"
+                }
+              },
+              "required": [
+                "pattern",
+                "result"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "special"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "match": {
+                  "type": "string",
+                  "enum": [
+                    "null",
+                    "nan",
+                    "null+nan",
+                    "true",
+                    "false",
+                    "empty"
+                  ]
+                },
+                "result": {
+                  "$ref": "#/definitions/MappingResult"
+                }
+              },
+              "required": [
+                "match",
+                "result"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "options": {}
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ],
+      "description": "Grafana value mappings: display text (and optionally a color) in place of a value."
+    },
+    "MappingResult": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "index": {
+          "type": "number"
+        }
+      }
+    },
+    "DataLink": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "targetBlank": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "url"
+      ],
+      "description": "A Grafana data link or panel link. `url` may use variables and, for data links, `${__value.raw}`-style macros."
+    },
+    "FieldOverride": {
+      "type": "object",
+      "properties": {
+        "matcher": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "options": {}
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [
+              "id",
+              "value"
+            ]
+          }
+        }
+      },
+      "required": [
+        "matcher",
+        "properties"
+      ]
+    },
+    "MobileOptions": {
+      "type": "object",
+      "properties": {
+        "span": {
+          "type": "number",
+          "description": "Columns out of 24 on a phone. Defaults: w <= 6 → 12 (two-up), otherwise 24."
+        },
+        "h": {
+          "type": "number",
+          "description": "Height in grid units (Grafana units are 30px). Defaults to gridPos.h."
+        },
+        "hidden": {
+          "type": "boolean"
+        }
+      },
+      "description": "dashkit extension: how a panel behaves on a narrow screen."
+    },
+    "TemplateVariable": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "hide": {
+          "type": "number"
+        },
+        "query": {},
+        "current": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "selected": {
+              "type": "boolean"
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VariableOption"
+          }
+        },
+        "multi": {
+          "type": "boolean"
+        },
+        "includeAll": {
+          "type": "boolean"
+        },
+        "allValue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "datasource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DataSourceRef"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Query variables: where the options come from."
+        },
+        "refresh": {
+          "type": "number",
+          "description": "Query variables: 0/missing = never, 1 = on dashboard load, 2 = on time range change."
+        },
+        "regex": {
+          "type": "string",
+          "description": "Query variables: `/pattern/flags` applied to each option's text."
+        },
+        "sort": {
+          "type": "number",
+          "description": "Query variables: 0 = query order, 1/2 = alpha, 3/4 = numeric, 5/6 = alpha ignoring case, 7/8 = natural. Odd ascending."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "VariableOption": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "selected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "value"
+      ]
+    },
+    "InputOptions": {
+      "type": "object",
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "The metric this input records to. Visualization queries select data by this name."
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "input-slider only: text spaced evenly along the track, first at min and last at max, e.g. [\"Understeer\", \"Neutral\", \"Oversteer\"]. Replaces the numeric min/max labels."
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "last"
+            }
+          ],
+          "description": "Initial value: a literal, or \"last\" to start from the most recent entry."
+        },
+        "record": {
+          "type": "string",
+          "enum": [
+            "changed",
+            "always"
+          ],
+          "description": "\"changed\" (the default) records the value only when it was edited before Save; \"always\" records it on every Save, so a default like \"last\" is kept with each save."
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/InputChoice"
+          },
+          "description": "input-select only."
+        },
+        "choicesFrom": {
+          "type": "string",
+          "description": "input-select only: take the choices from the app at runtime instead of `choices`, for lists that live in app data (e.g. wheel sets). Names a key of InputForm's `choices` prop."
+        },
+        "multi": {
+          "type": "boolean",
+          "description": "input-select only: allow selecting several. Each selection is recorded as its own entry."
+        },
+        "increment": {
+          "type": "number",
+          "description": "input-counter only: the amount each tap records (default 1)."
+        },
+        "suggest": {
+          "type": "boolean",
+          "description": "input-text only: a single-line field that suggests values recorded earlier, matching what's typed."
+        },
+        "suggestWith": {
+          "type": "string",
+          "description": "input-text with `suggest` only: another input's metric whose current value narrows the suggestions to values saved alongside it (e.g. configurations of the chosen track). Falls back to every earlier value when none were."
+        }
+      },
+      "required": [
+        "metric"
+      ]
+    },
+    "InputChoice": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "number",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ]
+    }
+  }
+}

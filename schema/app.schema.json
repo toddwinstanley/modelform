@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:spaghetti:app",
+  "title": "Studio app config",
+  "$ref": "#/definitions/AppManifest",
+  "definitions": {
+    "AppManifest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "description": "Format version. Always 1 for now.",
+          "const": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "The app's name.",
+          "minLength": 1
+        },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Tab"
+          },
+          "description": "The bottom tabs, in order.",
+          "minItems": 1
+        },
+        "documents": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/definitions/Dashboard"
+              }
+            ]
+          },
+          "description": "Dashboards and forms by id: a path relative to this file, or the dashboard JSON inline."
+        }
+      },
+      "required": [
+        "version",
+        "title",
+        "tabs",
+        "documents"
+      ],
+      "additionalProperties": false,
+      "description": "The root of an app config: navigation, plus the documents it shows. Annotations here feed schema/app.schema.json."
+    },
+    "Tab": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Also the tab's route, so keep it URL-safe and stable.",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "ios": {
+                  "type": "string"
+                },
+                "android": {
+                  "type": "string"
+                },
+                "web": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          ],
+          "description": "A name from the app's icon set (e.g. \"edit\", \"chart\"), or per-platform symbol names."
+        },
+        "screen": {
+          "$ref": "#/definitions/Screen"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "screen"
+      ],
+      "additionalProperties": false
+    },
+    "Screen": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "dashboard"
+            },
+            "dashboard": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "dashboard"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "forms"
+            },
+            "forms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "type",
+            "forms"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "menu"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/MenuItem"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "MenuItem": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Defaults to the document's title."
+        },
+        "description": {
+          "type": "string"
+        },
+        "dashboard": {
+          "type": "string",
+          "description": "A dashboard to open. Give this or `form`, not both."
+        },
+        "form": {
+          "type": "string",
+          "description": "A form to open. Give this or `dashboard`, not both."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Dashboard": {
+      "$ref": "urn:spaghetti:dashboard"
+    }
+  }
+}

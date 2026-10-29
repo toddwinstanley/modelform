@@ -10,21 +10,27 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "schema": "node tools/schema.js"
   },
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-svg": "*",
-    "react-native-safe-area-context": "*"
+    "react-native-safe-area-context": "*",
+    "react-native-svg": "*"
   },
   "devDependencies": {
-    "vitest": "^4.0.0",
-    "typescript": "~6.0.3",
     "@types/react": "~19.3.0",
     "react": "19.3.0",
     "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
     "react-native-svg": "15.16.0",
-    "react-native-safe-area-context": "~5.10.1"
+    "ts-json-schema-generator": "2.9.0",
+    "typescript": "~6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "jsonc-parser": "3.3.1"
   }
 }
