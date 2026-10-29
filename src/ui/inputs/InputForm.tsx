@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { entryToInputValue, inputPanels, toEntries, type Entry, type InputChoice, type InputValue } from '../../core/inputs';
+import { entryToInputValue, inputPanels, toEntries, type Entry, type InputChoice, type InputValue, type NewEntry } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';
@@ -19,16 +19,25 @@ export interface InputFormProps {
   header?: ReactNode;
   /** With `header`: the time to record a Save at (default now). */
   timestamp?(): number;
+  /** Initial values supplied by the app, keyed by metric. They take the place of the panels' own `default`. */
+  defaults?: Record<string, InputValue>;
+  /**
+   * Called on Save before anything is recorded, with the time it will be recorded at.
+   * Resolve with entries to record alongside the form's (e.g. asked for in a dialog), or
+   * null to cancel the save and keep the edits.
+   */
+  beforeSave?(ts: number): Promise<NewEntry[] | null>;
 }
 
 const NO_CHOICES: Record<string, InputChoice[]> = {};
+const NO_DEFAULTS: Record<string, InputValue> = {};
 
 /**
  * A data entry form laid out from dashboard JSON with input-* panels. Edited values are
  * staged until Save, then recorded together at the chosen timestamp, along with any
  * `record: "always"` inputs. Counters record immediately on tap.
  */
-export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp }: InputFormProps) {
+export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp, defaults: given = NO_DEFAULTS, beforeSave }: InputFormProps) {
   const theme = useDashTheme();
   const panels = useMemo(() => inputPanels(dashboard), [dashboard]);
   const [defaults, setDefaults] = useState<Record<string, InputValue>>({});
@@ -59,7 +68,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
 
   const state = useMemo<InputFormState>(
     () => ({
-      value: (m) => (m in edits ? edits[m] : defaults[m] ?? null),
+      value: (m) => (m in edits ? edits[m] : m in given ? given[m] : defaults[m] ?? null),
       setValue: (m, v) => {
         setStatus(null);
         setEdits((e) => ({ ...e, [m]: v }));
@@ -68,7 +77,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
       store,
       choices,
     }),
-    [edits, defaults, store, choices],
+    [edits, defaults, given, store, choices],
   );
 
   const dirty = Object.keys(edits).length;
@@ -79,12 +88,14 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
       .filter((p) => p.options.metric in edits || p.options.record === 'always')
       .flatMap((p) => toEntries(p, state.value(p.options.metric), ts));
     if (!entries.length) return;
-    const added = await store.add(entries);
+    const extra = beforeSave ? await beforeSave(ts) : [];
+    if (!extra) return;
+    const added = await store.add([...entries, ...extra]);
     setEdits({});
     setOffsetMs(0);
-    setStatus(`Saved ${entries.length} ${entries.length === 1 ? 'value' : 'values'}`);
+    setStatus(`Saved ${added.length} ${added.length === 1 ? 'value' : 'values'}`);
     onSaved?.(added.length, added);
-  }, [panels, edits, state, offsetMs, store, onSaved, header, timestamp]);
+  }, [panels, edits, state, offsetMs, store, onSaved, header, timestamp, beforeSave]);
 
   return (
     <InputFormContext.Provider value={state}>
