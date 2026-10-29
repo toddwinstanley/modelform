@@ -14,3 +14,4 @@ export * from './inputs';
 export * from './local';
 export * from './gazetteer';
 export * from './links';
+export * from './manifest';
