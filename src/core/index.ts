@@ -17,3 +17,5 @@ export * from './links';
 export * from './manifest';
 export * from './configSchema';
 export * from './editing';
+export * from './jsonEdit';
+export * from './layoutEdit';

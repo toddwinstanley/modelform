@@ -65,6 +65,22 @@ export interface InputOptions {
   suggestWith?: string;
 }
 
+/** The options each input type reads, for editors to offer. */
+export const INPUT_OPTION_KEYS: Record<InputType, (keyof InputOptions)[]> = {
+  'input-number': ['metric', 'unit', 'step', 'min', 'max', 'default', 'record'],
+  'input-slider': ['metric', 'min', 'max', 'step', 'unit', 'labels', 'default', 'record'],
+  'input-select': ['metric', 'choices', 'choicesFrom', 'multi', 'placeholder', 'default', 'record'],
+  'input-toggle': ['metric', 'default', 'record'],
+  'input-rating': ['metric', 'min', 'max', 'default', 'record'],
+  'input-text': ['metric', 'placeholder', 'suggest', 'suggestWith', 'default', 'record'],
+  'input-counter': ['metric', 'increment', 'unit'],
+  'input-duration': ['metric', 'placeholder', 'default', 'record'],
+};
+
+export const INPUT_TYPES = Object.keys(INPUT_OPTION_KEYS) as InputType[];
+
+export const isInputType = (type: string): type is InputType => type in INPUT_OPTION_KEYS;
+
 export type InputPanel = Panel & { type: InputType; options: InputOptions };
 
 export const isInputPanel = (p: Panel): p is InputPanel => p.type.startsWith('input-') && !!p.options?.metric;

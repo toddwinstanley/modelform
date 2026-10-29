@@ -3,7 +3,11 @@
  * exactly as the app would load them, point each issue at a spot in its file, and read and
  * write the files where the config is served.
  */
-import { applyEdits, findNodeAtLocation, format, modify, parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
+import { applyEdits, findNodeAtLocation, format, parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
+import { isInputType } from './inputs';
+import { applyJsonEdits } from './jsonEdit';
+import { LOCAL_DATASOURCE_TYPE } from './local';
+import type { Panel } from './schema';
 import { assembleBundle, resolveUrl, type ConfigIssue } from './manifest';
 
 export interface Located {
@@ -156,7 +160,34 @@ export function formatJsonText(text: string): string {
 
 /** Sets a value at a path in JSON text, touching only that spot so the rest keeps its formatting. */
 export function setJsonValue(text: string, path: (string | number)[], value: unknown): string {
-  return applyEdits(text, modify(text, path, value, { formattingOptions: { insertSpaces: true, tabSize: 2, eol: '\n' } }));
+  return applyJsonEdits(text, [{ path, value }]);
+}
+
+/** Panel types an editor offers to add, by what they're for. */
+export const PANEL_TYPES = {
+  form: ['input-number', 'input-slider', 'input-select', 'input-toggle', 'input-rating', 'input-text', 'input-counter', 'input-duration', 'text', 'row'],
+  dashboard: ['timeseries', 'barchart', 'stat', 'gauge', 'bargauge', 'piechart', 'table', 'text', 'row'],
+};
+
+/** A panel of `type` to start from. Inputs record to `metric`; charts read it from the local datasource. */
+export function newPanel(type: string, metric = 'value'): Panel {
+  const title = type === 'row' ? 'Section' : metric.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  if (type === 'row') return { type, title, gridPos: { x: 0, y: 0, w: 24, h: 1 } };
+  if (isInputType(type)) {
+    const options: Record<string, unknown> = { metric };
+    if (type === 'input-select') options.choices = [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }];
+    if (type === 'input-slider') Object.assign(options, { min: 0, max: 10, step: 1 });
+    return { type, title, gridPos: { x: 0, y: 0, w: 24, h: 3 }, options };
+  }
+  if (type === 'text') return { type, title: '', gridPos: { x: 0, y: 0, w: 24, h: 3 }, options: { mode: 'markdown', content: 'Text' } };
+  const small = type === 'stat' || type === 'gauge';
+  return {
+    type,
+    title,
+    gridPos: { x: 0, y: 0, w: small ? 6 : 24, h: small ? 4 : 8 },
+    datasource: { type: LOCAL_DATASOURCE_TYPE },
+    targets: [{ refId: 'A', metric, ...(type === 'barchart' && { aggregate: 'sum', bucket: '1d' }) }],
+  };
 }
 
 /** Starting points for a new document. */
