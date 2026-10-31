@@ -14,7 +14,7 @@
  *
  * A document is either a path (relative to the manifest's URL) or the dashboard inlined.
  */
-import { dashboardSchemaIssues, manifestSchemaIssues } from './configSchema';
+import { cleanDashboard, dashboardSchemaIssues, manifestSchemaIssues } from './configSchema';
 import { inputPanels } from './inputs';
 import type { Dashboard } from './schema';
 
@@ -112,10 +112,59 @@ export function validateManifest(json: unknown, file = 'manifest'): ConfigIssue[
 }
 
 /**
- * Checks a dashboard or form. Errors are what would stop it rendering; anything else the
- * schema flags is a warning, since Grafana exports often carry values dashkit just ignores.
+ * Checks a dashboard or form and readies it for rendering. Errors are what would stop it
+ * rendering, and leave no dashboard. Otherwise values that don't fit the schema (a title
+ * that's a number, say) are removed, each with a warning, so the renderer never sees them;
+ * anything else the schema flags (unknown keys, mostly) is a warning, since Grafana exports
+ * often carry values dashkit just ignores.
  */
+export function prepareDashboard(json: unknown, file: string): { dashboard?: Dashboard; issues: ConfigIssue[] } {
+  const errors = dashboardErrors(json, file);
+  if (errors.length) return { issues: [...errors, ...schemaWarnings(json, file, errors)] };
+  const { value, removed } = cleanDashboard(json);
+  const dashboard = value as Dashboard;
+  // A row's own panels only show when it's expanded, so one that can't render is dropped rather than failing the dashboard.
+  dashboard.panels.forEach((row, i) => {
+    if (!Array.isArray(row.panels)) return;
+    row.panels = row.panels.filter((child, j) => {
+      const problem = panelProblem(child);
+      if (problem) removed.push({ path: `panels[${i}].panels[${j}]`, message: problem.summary });
+      return !problem;
+    });
+  });
+  return {
+    dashboard,
+    issues: [
+      ...removed.map((r): ConfigIssue => ({ severity: 'warning', path: `${file}: ${r.path}`, message: `${r.message}, so it’s ignored` })),
+      ...schemaWarnings(dashboard, file, []),
+    ],
+  };
+}
+
+/**
+ * Why a panel can't be laid out or rendered at all, if it can't: where (relative to the panel)
+ * and what, and the same as one phrase about the whole panel.
+ */
+function panelProblem(p: unknown): { at: string; message: string; summary: string } | null {
+  if (!isObject(p)) return { at: '', message: 'must be an object', summary: 'must be an object' };
+  if (typeof p.type !== 'string') return { at: '.type', message: 'must be a string', summary: 'has no type' };
+  const g = p.gridPos;
+  if (!isObject(g) || !['x', 'y', 'w', 'h'].every((k) => typeof g[k] === 'number'))
+    return { at: '.gridPos', message: 'must have numeric x, y, w and h', summary: 'has no usable gridPos' };
+  if (p.type.startsWith('input-') && !nonEmptyString((p.options as Record<string, unknown>)?.metric)) {
+    const message = `${p.type} needs a metric to record to`;
+    return { at: '.options.metric', message, summary: message };
+  }
+  return null;
+}
+
+/** The issues `prepareDashboard` would find. */
 export function validateDashboard(json: unknown, file: string): ConfigIssue[] {
+  return prepareDashboard(json, file).issues;
+}
+
+/** What would stop a dashboard rendering at all. */
+function dashboardErrors(json: unknown, file: string): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   const error = (path: string, message: string) => issues.push({ severity: 'error', path: `${file}: ${path}`, message });
   if (!isObject(json)) {
@@ -126,20 +175,19 @@ export function validateDashboard(json: unknown, file: string): ConfigIssue[] {
   if (!Array.isArray(json.panels)) error('panels', 'must be an array');
   else
     json.panels.forEach((p, i) => {
-      if (!isObject(p)) return error(`panels[${i}]`, 'must be an object');
-      if (typeof p.type !== 'string') error(`panels[${i}].type`, 'must be a string');
-      const g = p.gridPos;
-      if (!isObject(g) || !['x', 'y', 'w', 'h'].every((k) => typeof g[k] === 'number'))
-        error(`panels[${i}].gridPos`, 'must have numeric x, y, w and h');
-      if (typeof p.type === 'string' && p.type.startsWith('input-') && !nonEmptyString((p.options as Record<string, unknown>)?.metric))
-        error(`panels[${i}].options.metric`, `${p.type} needs a metric to record to`);
+      const problem = panelProblem(p);
+      if (problem) error(`panels[${i}]${problem.at}`, problem.message);
     });
-  // Skip schema findings already covered by an error at or around the same spot.
-  const covered = issues.map((i) => i.path.slice(file.length + 2));
-  const near = (a: string, b: string) => a === b || a.startsWith(`${b}.`) || a.startsWith(`${b}[`) || b.startsWith(`${a}.`) || b.startsWith(`${a}[`);
-  for (const w of dashboardSchemaIssues(json))
-    if (!covered.some((c) => near(w.path, c))) issues.push({ severity: 'warning', path: `${file}: ${w.path}`, message: w.message });
   return issues;
+}
+
+/** Schema findings as warnings, skipping any already covered by an error at or around the same spot. */
+function schemaWarnings(json: unknown, file: string, errors: ConfigIssue[]): ConfigIssue[] {
+  const covered = errors.map((i) => i.path.slice(file.length + 2));
+  const near = (a: string, b: string) => a === b || a.startsWith(`${b}.`) || a.startsWith(`${b}[`) || b.startsWith(`${a}.`) || b.startsWith(`${a}[`);
+  return dashboardSchemaIssues(json)
+    .filter((w) => !covered.some((c) => near(w.path, c)))
+    .map((w) => ({ severity: 'warning', path: `${file}: ${w.path}`, message: w.message }));
 }
 
 /** Every document id the manifest's screens refer to, with where and what kind. */
@@ -193,10 +241,11 @@ export function resolveUrl(base: string, rel: string): string {
   return origin + out.join('/');
 }
 
-export type FetchJson = (url: string) => Promise<unknown>;
+/** `accept` replaces the default Accept header, e.g. to ask for a bundle. */
+export type FetchJson = (url: string, options?: { accept?: string }) => Promise<unknown>;
 
-export const defaultFetchJson: FetchJson = async (url) => {
-  const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+export const defaultFetchJson: FetchJson = async (url, options) => {
+  const res = await fetch(url, { headers: { Accept: options?.accept ?? 'application/json' }, cache: 'no-store' });
   // Callers prefix errors with the file's path, so these don't repeat the URL.
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return JSON.parse(await res.text());
@@ -206,9 +255,70 @@ export interface LoadResult {
   /** Present when there are no errors. */
   bundle?: ConfigBundle;
   issues: ConfigIssue[];
+  /** The config's revision, when the server sent it as one bundle. */
+  revision?: string;
 }
 
 const fileName = (url: string) => url.replace(/[?#].*$/, '').split('/').pop() || url;
+
+/** Asked for on the manifest's URL, a server that can returns the whole config in one response. */
+export const BUNDLE_TYPE = 'application/vnd.spaghetti.bundle+json';
+export const BUNDLE_ACCEPT = `${BUNDLE_TYPE}, application/json;q=0.9`;
+
+/**
+ * A whole config as of one moment: what the API and the dev config server send for the
+ * manifest's URL when asked for BUNDLE_TYPE. File paths are relative to the config's root,
+ * of which `manifest` is one; `commit` (relative to the manifest's URL) saves several at once.
+ */
+export interface BundleResponse {
+  $bundle: 1;
+  revision: string | number;
+  manifest: string;
+  commit?: string;
+  files: Record<string, { revision: string | number; text: string }>;
+}
+
+export function isBundleResponse(json: unknown): json is BundleResponse {
+  const b = json as BundleResponse | null;
+  return !!b && typeof b === 'object' && b.$bundle === 1 && typeof b.manifest === 'string' && !!b.files && typeof b.files === 'object';
+}
+
+/** The URL of a bundle's root folder, from the manifest's URL. */
+export function bundleRoot(manifestUrl: string, manifestPath: string): string {
+  const bare = manifestUrl.replace(/[?#].*$/, '');
+  return bare.endsWith(manifestPath) ? bare.slice(0, bare.length - manifestPath.length) : bare.replace(/[^/]*$/, '');
+}
+
+const NOT_IN_BUNDLE = 'not found in the config';
+
+/**
+ * Builds a bundle from a server's bundle response. Documents inside the config come from the
+ * response; one elsewhere (an absolute URL) is still fetched.
+ */
+export async function assembleFromResponse(url: string, response: BundleResponse, fetchJson: FetchJson = defaultFetchJson): Promise<LoadResult> {
+  const root = bundleRoot(url, response.manifest);
+  const file = fileName(url);
+  const parse = (path: string) => {
+    const f = response.files[path];
+    if (!f) throw new Error(NOT_IN_BUNDLE);
+    return JSON.parse(f.text);
+  };
+  let manifest: unknown;
+  try {
+    manifest = parse(response.manifest);
+  } catch (e) {
+    return { issues: [{ severity: 'error', path: file, message: (e as Error).message }] };
+  }
+  const result = await assembleBundle(
+    manifest,
+    async (ref) => {
+      const abs = resolveUrl(url, ref).replace(/[?#].*$/, '');
+      return abs.startsWith(root) ? parse(abs.slice(root.length)) : fetchJson(resolveUrl(url, ref));
+    },
+    file,
+  );
+  return { ...result, revision: String(response.revision) };
+}
 
 /**
  * Builds a bundle from a parsed manifest, getting each path document with `load`.
@@ -224,9 +334,9 @@ export async function assembleBundle(manifest: unknown, load: (path: string) => 
       const name = typeof ref === 'string' ? ref : `${file}: documents.${id}`;
       try {
         const json = typeof ref === 'string' ? await load(ref) : ref;
-        const docIssues = validateDashboard(json, name);
+        const { dashboard, issues: docIssues } = prepareDashboard(json, name);
         issues.push(...docIssues);
-        if (!docIssues.length) documents[id] = json as Dashboard;
+        if (dashboard) documents[id] = dashboard;
       } catch (e) {
         issues.push({ severity: 'error', path: name, message: (e as Error).message });
       }
@@ -237,14 +347,18 @@ export async function assembleBundle(manifest: unknown, load: (path: string) => 
   return issues.some((i) => i.severity === 'error') ? { issues } : { bundle, issues };
 }
 
-/** Fetches a manifest and the documents it points to, resolving paths against its URL. */
+/**
+ * Fetches a config: in one response from a server that bundles (all of it from the same
+ * moment), or else the manifest and then each document it points to, resolved against its URL.
+ */
 export async function fetchBundle(url: string, fetchJson: FetchJson = defaultFetchJson): Promise<LoadResult> {
   let manifest: unknown;
   try {
-    manifest = await fetchJson(url);
+    manifest = await fetchJson(url, { accept: BUNDLE_ACCEPT });
   } catch (e) {
     return { issues: [{ severity: 'error', path: fileName(url), message: (e as Error).message }] };
   }
+  if (isBundleResponse(manifest)) return assembleFromResponse(url, manifest, fetchJson);
   return assembleBundle(manifest, (path) => fetchJson(resolveUrl(url, path)), fileName(url));
 }
 
@@ -258,6 +372,7 @@ export interface CachedConfig {
   url: string;
   fetchedAt: number;
   bundle: ConfigBundle;
+  revision?: string;
 }
 
 export interface ConfigState {
@@ -266,6 +381,8 @@ export interface ConfigState {
   url?: string;
   /** When the bundle shown was fetched (cache or remote). */
   fetchedAt?: number;
+  /** The shown config's revision, when the server gives one. */
+  revision?: string;
   loading: boolean;
   /** A summary ("2 errors") when the last fetch failed; the bundle shown is then the last good one. See `issues`. */
   error?: string;
@@ -319,7 +436,7 @@ export class ConfigLoader {
     const cached = await cache?.read().catch(() => null);
     if (cached?.url === url && !this.snapshot.fetchedAt) {
       this.lastJson = JSON.stringify(cached.bundle);
-      this.set({ bundle: cached.bundle, source: 'cache', fetchedAt: cached.fetchedAt });
+      this.set({ bundle: cached.bundle, source: 'cache', fetchedAt: cached.fetchedAt, revision: cached.revision });
     }
     await this.refresh();
   }
@@ -330,7 +447,7 @@ export class ConfigLoader {
     if (!url) return Promise.resolve();
     this.inflight ??= (async () => {
       try {
-        const { bundle, issues } = await fetchBundle(url, fetchJson);
+        const { bundle, issues, revision } = await fetchBundle(url, fetchJson);
         if (!bundle) {
           const errors = issues.filter((i) => i.severity === 'error').length;
           return this.set({ loading: false, error: errors === 1 ? '1 error' : `${errors} errors`, issues });
@@ -339,10 +456,15 @@ export class ConfigLoader {
         const changed = json !== this.lastJson;
         this.lastJson = json;
         const fetchedAt = Date.now();
-        if (changed) cache?.write({ url, fetchedAt, bundle }).catch(() => {});
+        if (changed || revision !== this.snapshot.revision) cache?.write({ url, fetchedAt, bundle, revision }).catch(() => {});
         this.set(
-          { ...(changed && { bundle }), source: 'remote', fetchedAt, loading: false, error: undefined, issues },
-          changed || this.snapshot.source !== 'remote' || !!this.snapshot.error || this.snapshot.loading || !sameIssues(issues, this.snapshot.issues),
+          { ...(changed && { bundle }), source: 'remote', fetchedAt, revision, loading: false, error: undefined, issues },
+          changed ||
+            revision !== this.snapshot.revision ||
+            this.snapshot.source !== 'remote' ||
+            !!this.snapshot.error ||
+            this.snapshot.loading ||
+            !sameIssues(issues, this.snapshot.issues),
         );
       } finally {
         this.inflight = undefined;

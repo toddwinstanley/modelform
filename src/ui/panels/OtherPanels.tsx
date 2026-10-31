@@ -170,7 +170,9 @@ export function TablePanel({ panel, frames }: PanelProps) {
 /** Grafana "text": markdown is rendered as plain paragraphs with headings and bold stripped to weight. */
 export function TextPanel({ panel }: PanelProps) {
   const theme = useDashTheme();
-  const content: string = panel.options?.content ?? '';
+  // Panel options aren't typed by the schema, so content may be anything.
+  const raw: unknown = panel.options?.content;
+  const content = typeof raw === 'string' ? raw : '';
   const text = panel.options?.mode === 'html' ? content.replace(/<[^>]+>/g, '') : content;
   return (
     <ScrollView>

@@ -20,6 +20,7 @@ import type { Panel } from '../core/schema';
 import { interpolate } from '../core/variables';
 import { useDashboard, usePanelData, usePanelLinks } from './context';
 import { LinkIcon } from './links';
+import { RenderBoundary } from './RenderBoundary';
 import { InputPanelBody } from './inputs/InputPanels';
 import { panelComponent } from './panels/registry';
 import { useLayout } from './panels/common';
@@ -169,7 +170,42 @@ function useSeenSections(viewportHeight: number) {
   return { seen, viewportH, onScroll, onViewportLayout, onSectionLayout };
 }
 
-export function PanelCard({ panel, width, height, deferred }: { panel: Panel; width: number; height: number; deferred?: boolean }) {
+interface PanelCardProps {
+  panel: Panel;
+  width: number;
+  height: number;
+  deferred?: boolean;
+}
+
+/** One panel in its card. A panel that fails to render shows why in its place; the rest of the dashboard carries on. */
+export function PanelCard(props: PanelCardProps) {
+  const { panel, width, height } = props;
+  return (
+    <RenderBoundary resetKeys={[panel, width, height]} fallback={(error) => <PanelError panel={panel} width={width} height={height} error={error} />}>
+      <PanelCardContent {...props} />
+    </RenderBoundary>
+  );
+}
+
+function PanelError({ panel, width, height, error }: { panel: Panel; width: number; height: number; error: Error }) {
+  const theme = useDashTheme();
+  return (
+    <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.danger }]} accessibilityRole="alert">
+      {/* The raw title: interpolating it may be what failed. */}
+      {!!panel.title && (
+        <Text style={[styles.title, styles.errorTitle, { color: theme.text }]} numberOfLines={1}>
+          {panel.title}
+        </Text>
+      )}
+      <Text style={[styles.errorText, { color: theme.danger }]}>This panel couldn’t be shown.</Text>
+      <Text style={[styles.errorText, { color: theme.textMuted }]} numberOfLines={3}>
+        {error.message}
+      </Text>
+    </View>
+  );
+}
+
+function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
   const theme = useDashTheme();
   const { dashboard, variables, variableInfo } = useDashboard();
   const { resolve, openLinks } = usePanelLinks(panel);
@@ -248,6 +284,8 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 13, fontWeight: '600' },
   titleLink: { paddingTop: 1 },
   body: { flex: 1 },
+  errorTitle: { flex: 0, marginBottom: 6 },
+  errorText: { fontSize: 12, lineHeight: 17 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 8 },
   error: { fontSize: 12, textAlign: 'center' },
 });

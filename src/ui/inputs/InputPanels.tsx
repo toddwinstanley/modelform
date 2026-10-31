@@ -270,10 +270,14 @@ function ToggleInput({ panel, value, onChange }: InputProps) {
   );
 }
 
+/** More dots than this don't fit a phone's width; a config asking for more gets the first ones. */
+const MAX_RATING_LEVELS = 10;
+
 function RatingInput({ panel, value, onChange }: InputProps) {
   const theme = useDashTheme();
-  const { min = 1, max = 5 } = panel.options;
-  const levels = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  const min = Math.round(panel.options.min ?? 1);
+  const max = Math.round(panel.options.max ?? 5);
+  const levels = Array.from({ length: Math.min(Math.max(0, max - min + 1), MAX_RATING_LEVELS) }, (_, i) => min + i);
   return (
     <View style={styles.rating}>
       {levels.map((n) => {

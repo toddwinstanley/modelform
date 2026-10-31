@@ -40,6 +40,10 @@ export interface Target {
   refId: string;
   datasource?: DataSourceRef | string | null;
   hide?: boolean;
+  /** The local datasource's metric (see LocalTarget). Typed here so a config can't give it something else. */
+  metric?: string;
+  /** Display name for the series. */
+  alias?: string;
   [key: string]: unknown;
 }
 

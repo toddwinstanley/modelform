@@ -8,7 +8,7 @@ import { isInputType } from './inputs';
 import { applyJsonEdits } from './jsonEdit';
 import { LOCAL_DATASOURCE_TYPE } from './local';
 import type { Panel } from './schema';
-import { assembleBundle, resolveUrl, type ConfigIssue, type FetchJson } from './manifest';
+import { assembleBundle, BUNDLE_ACCEPT, bundleRoot, isBundleResponse, resolveUrl, type ConfigIssue, type FetchJson } from './manifest';
 
 export interface Located {
   /** Character offset and length of the text the issue is about. */
@@ -222,15 +222,43 @@ export interface ConfigFiles {
   read(path: string): Promise<string>;
   /** `force` saves even if the file changed elsewhere since it was read. */
   write(path: string, text: string, options?: { force?: boolean }): Promise<void>;
+  /**
+   * Reads every file in one go, all from the same moment, where the server can; resolves
+   * null where it can't (then use `read`). Paths are relative to the manifest, like `read`'s.
+   */
+  readAll?(): Promise<Record<string, string> | null>;
+  /** True once `commit` can be used: the server saves several files at once. */
+  readonly atomic?: boolean;
+  /** Saves several files as one change, all or none (null deletes). Throws SaveConflictError listing every conflict. */
+  commit?(changes: Record<string, string | null>, options?: { force?: boolean }): Promise<void>;
 }
 
 /** Supplies the bearer token for a request, or nothing to send none. Called per request, so it can refresh. */
 export type TokenSource = () => Promise<string | null | undefined> | string | null | undefined;
 
-/** A save refused because the file was saved elsewhere after it was read. */
+/** A save refused because files were saved elsewhere after they were read. */
 export class SaveConflictError extends Error {
-  constructor(readonly path: string) {
-    super(`${path} was saved somewhere else since you opened it`);
+  constructor(readonly paths: string[]) {
+    const one = paths.length === 1;
+    super(`${paths.join(', ')} ${one ? 'was' : 'were'} saved somewhere else since you opened ${one ? 'it' : 'them'}`);
+  }
+}
+
+/** A revision as a server names it: the API's are numbers, the dev config server's hashes. */
+type Revision = string | number;
+
+/** The revision in an ETag header. */
+function fromEtag(tag: string): Revision {
+  const v = tag.trim().replace(/^W\//, '').replace(/"/g, '');
+  return /^\d+$/.test(v) ? Number(v) : v;
+}
+
+async function errorText(res: Response): Promise<string> {
+  const body = await res.text();
+  try {
+    return JSON.parse(body).error ?? body;
+  } catch {
+    return body || `HTTP ${res.status}`;
   }
 }
 
@@ -241,14 +269,18 @@ async function authHeaders(token?: TokenSource): Promise<Record<string, string>>
 
 /**
  * Files served over HTTP next to the manifest: GET to read, PUT to save. The API and the dev
- * config server both speak this. Where the server gives revisions (ETags, as the API does),
- * a save only goes through if the file hasn't been saved elsewhere since it was read here;
- * otherwise it throws SaveConflictError, unless `force` is set.
+ * config server both speak this. Where the server gives revisions (ETags), a save only goes
+ * through if the file hasn't been saved elsewhere since it was read here; otherwise it throws
+ * SaveConflictError, unless `force` is set. Where the server bundles, `readAll` reads the whole
+ * config in one request and `commit` saves several files at once.
  */
 export class HttpConfigFiles implements ConfigFiles {
   readonly manifestPath: string;
-  /** The revision of each file as last read or saved here. */
-  private revisions = new Map<string, string>();
+  /** The revision of each file as last read or saved here, by path relative to the manifest. */
+  private revisions = new Map<string, Revision>();
+  private commitUrl?: string;
+  /** The bundle's root URL, which its file paths are relative to. */
+  private root?: string;
 
   constructor(
     private manifestUrl: string,
@@ -257,40 +289,103 @@ export class HttpConfigFiles implements ConfigFiles {
     this.manifestPath = manifestUrl.replace(/[?#].*$/, '').split('/').pop() || 'app.json';
   }
 
+  get atomic() {
+    return !!this.commitUrl;
+  }
+
   async read(path: string) {
     const res = await fetch(resolveUrl(this.manifestUrl, path), { headers: await authHeaders(this.token), cache: 'no-store' });
     if (!res.ok) throw new Error(res.status === 404 ? NOT_FOUND : `HTTP ${res.status}`);
     const tag = res.headers.get('ETag');
-    if (tag) this.revisions.set(path, tag);
+    if (tag) this.revisions.set(path, fromEtag(tag));
     return res.text();
+  }
+
+  async readAll(): Promise<Record<string, string> | null> {
+    const res = await fetch(this.manifestUrl, { headers: { Accept: BUNDLE_ACCEPT, ...(await authHeaders(this.token)) }, cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status === 404 ? NOT_FOUND : `HTTP ${res.status}`);
+    let body: unknown;
+    try {
+      body = JSON.parse(await res.text());
+    } catch {
+      return null;
+    }
+    if (!isBundleResponse(body)) return null;
+    this.root = bundleRoot(this.manifestUrl, body.manifest);
+    this.commitUrl = body.commit ? resolveUrl(this.manifestUrl, body.commit) : undefined;
+    const files: Record<string, string> = {};
+    for (const [key, f] of Object.entries(body.files)) {
+      const path = this.relative(key);
+      if (path === null) continue;
+      files[path] = f.text;
+      this.revisions.set(path, f.revision);
+    }
+    return files;
+  }
+
+  /** A bundle path as a path relative to the manifest, or null if it's not under the manifest's folder. */
+  private relative(key: string): string | null {
+    const dir = this.manifestUrl.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+    const abs = this.root + key;
+    return abs.startsWith(dir) ? abs.slice(dir.length) : null;
+  }
+
+  /** A path relative to the manifest as a bundle path. */
+  private key(path: string): string {
+    const abs = resolveUrl(this.manifestUrl, path).replace(/[?#].*$/, '');
+    if (!this.root || !abs.startsWith(this.root)) throw new Error(`${path} is outside the config`);
+    return abs.slice(this.root.length);
   }
 
   async write(path: string, text: string, { force = false }: { force?: boolean } = {}) {
     const known = this.revisions.get(path);
-    const precondition: Record<string, string> = force ? {} : known ? { 'If-Match': known } : { 'If-None-Match': '*' };
+    const precondition: Record<string, string> = force ? {} : known !== undefined ? { 'If-Match': `"${known}"` } : { 'If-None-Match': '*' };
     const res = await fetch(resolveUrl(this.manifestUrl, path), {
       method: 'PUT',
       headers: { ...(await authHeaders(this.token)), ...precondition, 'Content-Type': 'application/json' },
       body: text,
     });
-    if (res.status === 412) throw new SaveConflictError(path);
-    if (!res.ok) {
-      const body = await res.text();
-      let message = body;
-      try {
-        message = JSON.parse(body).error ?? body;
-      } catch {}
-      throw new Error(`Couldn’t save ${path}: ${message || `HTTP ${res.status}`}`);
-    }
+    if (res.status === 412) throw new SaveConflictError([path]);
+    if (!res.ok) throw new Error(`Couldn’t save ${path}: ${await errorText(res)}`);
     const tag = res.headers.get('ETag');
-    if (tag) this.revisions.set(path, tag);
+    if (tag) this.revisions.set(path, fromEtag(tag));
+  }
+
+  async commit(changes: Record<string, string | null>, { force = false }: { force?: boolean } = {}) {
+    if (!this.commitUrl) throw new Error('This server can’t save several files at once');
+    const files: Record<string, object> = {};
+    const paths = new Map<string, string>();
+    for (const [path, text] of Object.entries(changes)) {
+      const key = this.key(path);
+      paths.set(key, path);
+      const known = this.revisions.get(path);
+      // Unless forced, each change is based on the revision read here; a file never read must be new.
+      const ifMatch = force ? {} : known !== undefined ? { ifMatch: known } : text === null ? {} : { ifMatch: null };
+      files[key] = text === null ? { delete: true, ...ifMatch } : { text, ...ifMatch };
+    }
+    const res = await fetch(this.commitUrl, {
+      method: 'POST',
+      headers: { ...(await authHeaders(this.token)), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files }),
+    });
+    if (res.status === 412) {
+      const conflicts = Object.keys(((await res.json().catch(() => ({}))) as { conflicts?: object }).conflicts ?? {});
+      throw new SaveConflictError(conflicts.length ? conflicts.map((k) => paths.get(k) ?? k) : Object.keys(changes));
+    }
+    if (!res.ok) throw new Error(`Couldn’t save ${Object.keys(changes).join(', ')}: ${await errorText(res)}`);
+    const saved = ((await res.json()) as { files?: Record<string, Revision | null> }).files ?? {};
+    for (const [key, revision] of Object.entries(saved)) {
+      const path = paths.get(key) ?? key;
+      if (revision === null) this.revisions.delete(path);
+      else this.revisions.set(path, revision);
+    }
   }
 }
 
 /** A FetchJson that sends a bearer token, for loading configs from the API. */
 export function fetchJsonWithToken(token: TokenSource): FetchJson {
-  return async (url) => {
-    const res = await fetch(url, { headers: { Accept: 'application/json', ...(await authHeaders(token)) }, cache: 'no-store' });
+  return async (url, options) => {
+    const res = await fetch(url, { headers: { Accept: options?.accept ?? 'application/json', ...(await authHeaders(token)) }, cache: 'no-store' });
     if (!res.ok) throw new Error(res.status === 401 ? 'not signed in' : `HTTP ${res.status}`);
     return JSON.parse(await res.text());
   };
@@ -298,14 +393,22 @@ export function fetchJsonWithToken(token: TokenSource): FetchJson {
 
 /** Reads the manifest and every document it gives a path for. Files that can't be read are left out (checkFiles then reports them). */
 export async function readConfigFiles(source: ConfigFiles): Promise<Record<string, string>> {
-  const files: Record<string, string> = { [source.manifestPath]: await source.read(source.manifestPath) };
+  // One request where the server bundles, so the files are all from the same moment.
+  const all = await source.readAll?.();
+  const read = all
+    ? async (p: string) => {
+        if (!(p in all)) throw new Error(NOT_FOUND);
+        return all[p];
+      }
+    : (p: string) => source.read(p);
+  const files: Record<string, string> = { [source.manifestPath]: await read(source.manifestPath) };
   const { value } = parseJsonText(files[source.manifestPath]);
   const documents = (value as { documents?: Record<string, unknown> } | undefined)?.documents ?? {};
   const paths = [...new Set(Object.values(documents).filter((d): d is string => typeof d === 'string'))];
   await Promise.all(
     paths.map(async (p) => {
       try {
-        files[p] = await source.read(p);
+        files[p] = await read(p);
       } catch {}
     }),
   );

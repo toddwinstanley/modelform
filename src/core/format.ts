@@ -69,8 +69,14 @@ export function formatValue(value: number | null | undefined, config: FieldConfi
   }
 }
 
+/** More decimals than anyone can read; Intl throws past 100. */
+const MAX_DECIMALS = 20;
+
 function fixed(v: number, decimals?: number): string {
-  if (decimals != null) return v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if (decimals != null) {
+    const d = Math.min(MAX_DECIMALS, Math.max(0, Math.round(decimals)));
+    return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
   const abs = Math.abs(v);
   const auto = abs === 0 || abs >= 100 ? 0 : abs >= 10 ? 1 : abs >= 1 ? 2 : 3;
   return v.toLocaleString('en-US', { maximumFractionDigits: auto });

@@ -339,6 +339,14 @@
         },
         "hide": {
           "type": "boolean"
+        },
+        "metric": {
+          "type": "string",
+          "description": "The local datasource's metric (see LocalTarget). Typed here so a config can't give it something else."
+        },
+        "alias": {
+          "type": "string",
+          "description": "Display name for the series."
         }
       },
       "required": [

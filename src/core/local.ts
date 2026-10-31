@@ -60,7 +60,8 @@ export class LocalDataSource implements DataSource {
   ) {}
 
   async query(request: QueryRequest): Promise<DataFrame[]> {
-    const targets = request.targets as LocalTarget[];
+    // A target without a metric has nothing to read (a half-written config, say).
+    const targets = (request.targets as LocalTarget[]).filter((t) => typeof t.metric === 'string' && t.metric);
     const entries = await this.store.list({
       metrics: [...new Set(targets.map((t) => t.metric).filter(Boolean))],
       from: request.range.from,

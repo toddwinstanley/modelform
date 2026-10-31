@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { checkFiles, formatJsonText, HttpConfigFiles, locate, parseJsonText, SaveConflictError, setJsonValue, splitPath } from '../src/core';
+import { checkFiles, formatJsonText, HttpConfigFiles, locate, parseJsonText, readConfigFiles, SaveConflictError, setJsonValue, splitPath } from '../src/core';
 
 const manifest = (documents: object, tabs?: object[]) =>
   JSON.stringify(
@@ -114,6 +114,65 @@ describe('HttpConfigFiles', () => {
         ['https://api.test/v1/configs/c1/files/forms/a.json', { Authorization: 'Bearer tok', 'If-Match': '"4"', 'Content-Type': 'application/json' }],
         ['https://api.test/v1/configs/c1/files/forms/new.json', { Authorization: 'Bearer tok', 'If-None-Match': '*', 'Content-Type': 'application/json' }],
       ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads the whole config in one request and saves several files as one change', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const bundle = {
+      $bundle: 1,
+      revision: 5,
+      manifest: 'app.json',
+      commit: '../commit',
+      files: { 'app.json': { revision: 2, text: manifest({ daily: 'forms/daily.json' }) }, 'forms/daily.json': { revision: 4, text: form } },
+    };
+    const responses: Response[] = [
+      new Response(JSON.stringify(bundle), { status: 200, headers: { 'Content-Type': 'application/vnd.spaghetti.bundle+json' } }),
+      new Response(JSON.stringify({ revision: 6, files: { 'app.json': 3, 'forms/new.json': 1 } }), { status: 200 }),
+      new Response(JSON.stringify({ error: 'stale', conflicts: { 'forms/daily.json': 9 } }), { status: 412 }),
+    ];
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, init });
+      return responses.shift()!;
+    });
+    try {
+      const files = new HttpConfigFiles('https://api.test/v1/configs/c1/files/app.json', () => 'tok');
+      expect(files.atomic).toBe(false);
+      expect(await readConfigFiles(files)).toEqual({ 'app.json': bundle.files['app.json'].text, 'forms/daily.json': form });
+      expect(files.atomic).toBe(true);
+      expect((calls[0].init.headers as Record<string, string>).Accept).toContain('application/vnd.spaghetti.bundle+json');
+
+      await files.commit({ 'app.json': '{}', 'forms/new.json': '{}' });
+      expect(calls[1].url).toBe('https://api.test/v1/configs/c1/commit');
+      expect(JSON.parse(calls[1].init.body as string)).toEqual({
+        files: { 'app.json': { text: '{}', ifMatch: 2 }, 'forms/new.json': { text: '{}', ifMatch: null } },
+      });
+
+      // The next commit is based on what the last one saved, and reports every conflict.
+      const error = await files.commit({ 'app.json': '{"a":1}', 'forms/daily.json': '{}' }).catch((e) => e);
+      expect(error).toBeInstanceOf(SaveConflictError);
+      expect(error.paths).toEqual(['forms/daily.json']);
+      expect(JSON.parse(calls[2].init.body as string).files).toEqual({
+        'app.json': { text: '{"a":1}', ifMatch: 3 },
+        'forms/daily.json': { text: '{}', ifMatch: 4 },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads file by file from a server that doesn’t bundle', async () => {
+    const served: Record<string, string> = {
+      'https://files.test/c/app.json': manifest({ daily: 'forms/daily.json' }),
+      'https://files.test/c/forms/daily.json': form,
+    };
+    vi.stubGlobal('fetch', async (url: string) => (url in served ? new Response(served[url], { status: 200 }) : new Response('', { status: 404 })));
+    try {
+      const files = new HttpConfigFiles('https://files.test/c/app.json');
+      expect(Object.keys(await readConfigFiles(files))).toEqual(['app.json', 'forms/daily.json']);
+      expect(files.atomic).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }
