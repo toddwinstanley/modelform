@@ -116,7 +116,7 @@ function fromNow(t: number): string {
   return diff >= 0 ? `${text} ago` : `in ${text}`;
 }
 
-/** Highest threshold step whose value is <= the value. The base step has value null. */
+/** The step with the highest value at or below the value, in any order; the first step (the base, value null) below them all. */
 export function thresholdStep(value: number | null, config: FieldConfig = {}): ThresholdStep | undefined {
   const steps = config.thresholds?.steps;
   if (!steps?.length) return undefined;
@@ -128,7 +128,12 @@ export function thresholdStep(value: number | null, config: FieldConfig = {}): T
     v = ((value - min) / (max - min || 1)) * 100;
   }
   let match = steps[0];
-  for (const s of steps) if (s.value == null || v >= s.value) match = s;
+  let best = -Infinity;
+  for (const s of steps)
+    if (s.value != null && v >= s.value && s.value >= best) {
+      match = s;
+      best = s.value;
+    }
   return match;
 }
 
@@ -136,7 +141,7 @@ export function thresholdStep(value: number | null, config: FieldConfig = {}): T
  * Grafana's named colors. Panels created in Grafana reference these by name
  * (thresholds default to "green"/"red"), so they must resolve to the same hues.
  */
-const NAMED: Record<string, string> = {
+export const NAMED_COLORS: Record<string, string> = {
   green: '#73BF69',
   'semi-dark-green': '#56A64B',
   'dark-green': '#37872D',
@@ -177,7 +182,7 @@ const PASSTHROUGH = /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\(.*\)|[a-z]+)$/i;
 export function resolveColor(name: string | undefined, fallback: string): string {
   if (!name) return fallback;
   // An unrecognised Grafana name would throw in React Native, so fall back instead.
-  return NAMED[name] ?? (PASSTHROUGH.test(name) ? name : fallback);
+  return NAMED_COLORS[name] ?? (PASSTHROUGH.test(name) ? name : fallback);
 }
 
 /**

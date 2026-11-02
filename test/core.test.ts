@@ -161,6 +161,11 @@ describe('format & thresholds', () => {
     const cfg = { thresholds: { steps: [{ value: null, color: 'green' }, { value: 80, color: 'red' }] } };
     expect(thresholdStep(50, cfg)?.color).toBe('green');
     expect(thresholdStep(80, cfg)?.color).toBe('red');
+    // Steps out of order, as while one is being edited.
+    const unsorted = { thresholds: { steps: [{ value: null, color: 'green' }, { value: 90, color: 'red' }, { value: 60, color: 'yellow' }] } };
+    expect(thresholdStep(70, unsorted)?.color).toBe('yellow');
+    expect(thresholdStep(95, unsorted)?.color).toBe('red');
+    expect(thresholdStep(10, unsorted)?.color).toBe('green');
   });
   it('applies overrides by name', () => {
     const p = panel('timeseries', 0, 0, 24, 8, {

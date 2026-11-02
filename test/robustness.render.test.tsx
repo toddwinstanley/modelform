@@ -20,6 +20,7 @@ import {
   newPanel,
   PANEL_TYPES,
   PanelCard,
+  panelOptions,
   prepareDashboard,
   type InputFormState,
   type NewEntry,
@@ -94,6 +95,16 @@ function mutate(root: Record<string, unknown>, rng: Rng): string {
   for (const k of at.slice(0, -1)) parent = (parent as Record<string | number, unknown>)[k];
   const container = parent as Record<string | number, unknown>;
   const where = at.join('.');
+  const options = panelOptions(String(root.type));
+  if (options.length && rng.int(6) === 0) {
+    // Somewhere the renderer reads, whether or not the panel sets it yet.
+    const keys = rng.pick(options).path.split('.');
+    let node = root;
+    for (const k of keys.slice(0, -1)) node = (node[k] = node[k] && typeof node[k] === 'object' ? node[k] : {}) as Record<string, unknown>;
+    const v = structuredClone(rng.pick(WEIRD));
+    node[keys[keys.length - 1]] = v;
+    return `set option ${keys.join('.')} to ${JSON.stringify(v)?.slice(0, 40)}`;
+  }
   switch (rng.int(5)) {
     case 0:
       if (Array.isArray(container)) container.splice(key as number, 1);

@@ -16,6 +16,7 @@
  */
 import { cleanDashboard, dashboardSchemaIssues, manifestSchemaIssues } from './configSchema';
 import { inputPanels } from './inputs';
+import { cleanPanelOptions } from './panelOptions';
 import type { Dashboard } from './schema';
 
 export const MANIFEST_VERSION = 1;
@@ -130,6 +131,13 @@ export function prepareDashboard(json: unknown, file: string): { dashboard?: Das
       const problem = panelProblem(child);
       if (problem) removed.push({ path: `panels[${i}].panels[${j}]`, message: problem.summary });
       return !problem;
+    });
+  });
+  // The schema types options loosely; what each panel type reads is checked here.
+  dashboard.panels.forEach((p, i) => {
+    for (const r of cleanPanelOptions(p)) removed.push({ path: `panels[${i}]${r.path}`, message: r.message });
+    p.panels?.forEach((child, j) => {
+      for (const r of cleanPanelOptions(child)) removed.push({ path: `panels[${i}].panels[${j}]${r.path}`, message: r.message });
     });
   });
   return {
