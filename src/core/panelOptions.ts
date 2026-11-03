@@ -6,6 +6,7 @@
  */
 import { mappingProblem } from './mappings';
 import { REDUCER_LABELS } from './reduce';
+import type { FieldType } from './frame';
 import type { FieldOverride, Panel } from './schema';
 
 export type OptionControl =
@@ -20,7 +21,9 @@ export type OptionControl =
   /** fieldConfig.defaults.thresholds: a base color and steps. */
   | { kind: 'thresholds' }
   /** fieldConfig.defaults.mappings: display text and colors for values. */
-  | { kind: 'mappings' };
+  | { kind: 'mappings' }
+  /** The name of a field the panel's queries return, of one of these types. */
+  | { kind: 'field'; types: FieldType[] };
 
 export interface PanelOption {
   /** Dotted path in the panel, e.g. "options.legend.showLegend" or "fieldConfig.defaults.custom.lineWidth". */
@@ -143,7 +146,20 @@ const AXIS_PLACEMENT: PanelOption = {
   default: 'auto',
   control: { kind: 'select', choices: choices('auto', 'left', 'right', 'hidden') },
 };
-const X_FIELD: PanelOption = { path: 'options.xField', label: 'X field', category: 'Axis', help: 'The field to plot against; empty for the first one that fits.', control: { kind: 'text' } };
+const X_FIELD: PanelOption = {
+  path: 'options.xField',
+  label: 'X field',
+  category: 'Axis',
+  help: 'The number field to plot against. Auto uses the first one.',
+  control: { kind: 'field', types: ['number'] },
+};
+const GROUP_FIELD: PanelOption = {
+  path: 'options.xField',
+  label: 'X field',
+  category: 'Axis',
+  help: 'The field whose values become the groups of bars. Auto uses the first text field, else the time.',
+  control: { kind: 'field', types: ['string', 'time', 'number', 'boolean'] },
+};
 
 const GRAPH_STYLES: PanelOption[] = [
   { path: field('custom.drawStyle'), label: 'Style', category: 'Graph styles', default: 'line', control: { kind: 'select', choices: choices('line', 'bars', 'points') } },
@@ -162,7 +178,7 @@ const GRAPH_STYLES: PanelOption[] = [
 const BY_TYPE: Record<string, PanelOption[]> = {
   timeseries: [LEGEND, ...GRAPH_STYLES, AXIS_LABEL, ...STANDARD],
   trend: [LEGEND, ...GRAPH_STYLES, X_FIELD, AXIS_LABEL, ...STANDARD],
-  barchart: [LEGEND, X_FIELD, AXIS_LABEL, AXIS_PLACEMENT, ...STANDARD],
+  barchart: [LEGEND, GROUP_FIELD, AXIS_LABEL, AXIS_PLACEMENT, ...STANDARD],
   xychart: [
     LEGEND,
     { path: field('custom.pointSize.fixed'), label: 'Point size', category: 'Graph styles', default: 5, control: { kind: 'number', min: 1, max: 40, integer: true } },

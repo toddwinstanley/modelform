@@ -200,11 +200,14 @@ export function BarChartPanel({ panel, frames, width }: PanelProps) {
   const frame = frames[0];
   const category = frame && barCategory(panel, frame);
   if (!frame || !values.length) return <NoData />;
+  const xField: unknown = panel.options?.xField;
+  if (xField && !category) return <NoData message={`No field named “${String(xField)}”`} />;
 
   const allNumeric = frame.fields.filter((f) => f.type === 'number');
   const at = (f: (typeof allNumeric)[number]) => values[allNumeric.indexOf(f)];
   // Without a category field, show one bar per series using the reduced value.
   const numeric = category ? allNumeric.filter((f) => f !== category) : [];
+  if (category && !numeric.length) return <NoData message={`No number fields to draw besides “${category.name}”`} />;
   const fields = category
     ? numeric.map((f) => ({ key: f.name, name: at(f)?.name ?? f.name, color: at(f)?.color ?? theme.accent, config: at(f)?.config ?? {}, values: f.values.map(num) }))
     : [{ key: 'reduced', name: '', color: theme.accent, config: values[0].config, values: values.map((v) => v.value) }];
