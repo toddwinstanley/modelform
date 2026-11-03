@@ -46,6 +46,18 @@ const FIXTURES = [
   'apps/tracker/dashboards/track-day.json',
 ];
 
+const MAPPINGS = [
+  { type: 'value', options: { '55': { text: 'Fifty-five', color: 'red', index: 0 } } },
+  { type: 'range', options: { from: 50, to: 60, result: { color: 'blue' } } },
+  { type: 'regex', options: { pattern: '/^t(\\d)$/', result: { text: 'T$1' } } },
+  { type: 'special', options: { match: 'null', result: { text: 'None' } } },
+];
+const OVERRIDES = [
+  { matcher: { id: 'byName', options: 'weight' }, properties: [{ id: 'unit', value: 'masskg' }, { id: 'color', value: { mode: 'fixed', fixedColor: 'purple' } }, { id: 'mappings', value: MAPPINGS }] },
+  { matcher: { id: 'byType', options: 'number' }, properties: [{ id: 'decimals', value: 1 }, { id: 'thresholds', value: { mode: 'absolute', steps: [{ value: null, color: 'green' }, { value: 52, color: 'red' }] } }] },
+  { matcher: { id: 'byRegexp', options: 'w.*' }, properties: [{ id: 'displayName', value: 'W' }, { id: 'custom.lineWidth', value: 4 }] },
+];
+
 /** Every panel in the repo's dashboards and forms (rows' children too), and a template of each type. */
 function seedPanels(): Panel[] {
   const out: Panel[] = [];
@@ -53,7 +65,13 @@ function seedPanels(): Panel[] {
     const d = JSON.parse(readFileSync(path.join(ROOT, file), 'utf8')) as Dashboard;
     for (const p of d.panels ?? []) out.push(p, ...(p.panels ?? []));
   }
-  for (const type of new Set([...PANEL_TYPES.form, ...PANEL_TYPES.dashboard, 'geomap', 'xychart'])) out.push(newPanel(type, 'weight'));
+  for (const type of new Set([...PANEL_TYPES.form, ...PANEL_TYPES.dashboard, 'geomap', 'xychart'])) {
+    const p = newPanel(type, 'weight');
+    out.push(p);
+    // And with value mappings and overrides, so their insides get mutated too.
+    if (panelOptions(type).some((o) => o.control.kind === 'mappings') || type === 'timeseries')
+      out.push({ ...p, fieldConfig: { ...p.fieldConfig, defaults: { ...p.fieldConfig?.defaults, mappings: MAPPINGS }, overrides: OVERRIDES } });
+  }
   return out;
 }
 

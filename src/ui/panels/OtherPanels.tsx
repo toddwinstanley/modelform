@@ -49,7 +49,7 @@ export function PieChartPanel({ panel, frames }: PanelProps) {
           key: v.key,
           name: v.name,
           color: v.color,
-          value: `${formatValue(v.value, v.config)} (${Math.round(((v.value ?? 0) / total) * 100)}%)`,
+          value: `${v.text} (${Math.round(((v.value ?? 0) / total) * 100)}%)`,
         }))}
       />
     </View>

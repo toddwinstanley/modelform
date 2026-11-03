@@ -1,8 +1,8 @@
 import { fieldDisplayName, numberFields, toMillis, toSeries, toXYSeries, uniqueNames, type DataFrame, type Field, type Series } from '../core/frame';
 import { resolveFieldConfig } from '../core/fieldconfig';
-import { seriesColor, thresholdStep, resolveColor } from '../core/format';
+import { formatValue, mappedResult, resolveColor, seriesColor, thresholdStep } from '../core/format';
 import { reduce } from '../core/reduce';
-import type { FieldConfig, Panel } from '../core/schema';
+import type { FieldConfig, MappingResult, Panel } from '../core/schema';
 
 /** Clean tick values spanning [min, max]: 0 / 250 / 500 rather than 0 / 233 / 466. */
 export function niceTicks(min: number, max: number, count = 4): number[] {
@@ -152,7 +152,11 @@ export interface ReducedValue {
   config: FieldConfig;
   /** Series color (palette or fixed). */
   color: string;
-  /** Threshold color when thresholds are configured, else the series color. */
+  /** The value as shown: its value mapping's text, else formatted with the field's unit. */
+  text: string;
+  /** The value mapping that matched, if any. */
+  mapped?: MappingResult;
+  /** A matching value mapping's color, else the threshold color when thresholds are configured, else the series color. */
   stateColor: string;
   sparkline: (number | null)[];
   /** Where the value came from, for data links. */
@@ -173,13 +177,16 @@ export function reducedValues(panel: Panel, frames: DataFrame[], scheme: 'light'
       const value = reduce(values, calc);
       const color = seriesColor(out.length, scheme, config);
       const step = thresholdStep(value, config);
+      const mapped = mappedResult(value, config);
       out.push({
         key: `${fi}/${field.name}/${JSON.stringify(field.labels ?? {})}`,
         name: config.displayName ?? raw,
         value,
+        text: mapped?.text || formatValue(value, config),
+        mapped,
         config,
         color,
-        stateColor: step ? resolveColor(step.color, color) : color,
+        stateColor: mapped?.color ? resolveColor(mapped.color, color) : step ? resolveColor(step.color, color) : color,
         sparkline: values,
         field,
         frame,

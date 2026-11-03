@@ -205,6 +205,7 @@ export function seriesColor(index: number, scheme: 'light' | 'dark', config?: Fi
 /** The text a value mapping gives a value, if any. Supports value, range and special mappings. */
 export function mappedResult(value: unknown, config: FieldConfig = {}): MappingResult | undefined {
   for (const m of config.mappings ?? []) {
+    if (!m?.options || typeof m.options !== 'object') continue;
     if (m.type === 'value') {
       const hit = (m.options as Record<string, MappingResult>)[String(value)];
       if (hit) return hit;

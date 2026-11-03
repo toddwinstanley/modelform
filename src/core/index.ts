@@ -19,5 +19,6 @@ export * from './configSchema';
 export * from './editing';
 export * from './jsonEdit';
 export * from './layoutEdit';
+export * from './mappings';
 export * from './panelOptions';
 export * from './sample';

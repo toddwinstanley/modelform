@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { formatValue, resolveColor } from '../../core/format';
+import { resolveColor } from '../../core/format';
 import { reducedValues, type ReducedValue } from '../chart';
 import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
@@ -54,7 +54,7 @@ function Gauge({ v, showName, panel }: { v: ReducedValue; showName: boolean; pan
       )}
       <View style={[StyleSheet.absoluteFill, styles.center, { top: d * 0.12 }]} pointerEvents="none">
         <Text style={[styles.value, { color: theme.text, fontSize: Math.max(14, d * 0.18) }]} numberOfLines={1} adjustsFontSizeToFit>
-          {formatValue(v.value, v.config)}
+          {v.text}
         </Text>
         {showName && (
           <Text style={[styles.name, { color: theme.textSecondary }]} numberOfLines={1}>
@@ -88,7 +88,7 @@ export function BarGaugePanel({ panel, frames }: PanelProps) {
         const min = v.config.min ?? 0;
         const max = v.config.max ?? Math.max(...values.map((o) => o.value ?? 0), 1);
         const frac = v.value == null ? 0 : Math.min(1, Math.max(0, (v.value - min) / (max - min || 1)));
-        const color = v.config.thresholds ? v.stateColor : resolveColor(v.config.color?.fixedColor, v.color);
+        const color = v.config.thresholds || v.mapped?.color ? v.stateColor : resolveColor(v.config.color?.fixedColor, v.color);
         const hasLinks = !!v.config.links?.length;
         return (
           <Pressable
@@ -102,7 +102,7 @@ export function BarGaugePanel({ panel, frames }: PanelProps) {
               <Text style={[styles.name, { color: theme.textSecondary }]} numberOfLines={1}>
                 {v.name}
               </Text>
-              <Text style={[styles.barValue, { color: theme.text }]}>{formatValue(v.value, v.config)}</Text>
+              <Text style={[styles.barValue, { color: theme.text }]}>{v.text}</Text>
             </View>
             <View style={[styles.track, { backgroundColor: withAlpha(color, 0.18) }]}>
               <View style={[styles.meter, { width: `${frac * 100}%`, backgroundColor: color }]} />

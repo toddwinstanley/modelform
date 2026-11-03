@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { formatValue } from '../../core/format';
 import { linearScale, reducedValues, type ReducedValue } from '../chart';
 import { usePanelLinks } from '../context';
 import { useDashTheme } from '../theme';
@@ -57,7 +56,7 @@ function StatTile({ v, showName, panel }: { v: ReducedValue; showName: boolean; 
         </Text>
       )}
       <Text style={[styles.value, { color: theme.text, fontSize }]} numberOfLines={1} adjustsFontSizeToFit>
-        {formatValue(v.value, v.config)}
+        {v.text}
       </Text>
     </Pressable>
   );

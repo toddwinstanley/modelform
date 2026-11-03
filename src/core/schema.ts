@@ -96,7 +96,7 @@ export interface MappingResult {
 
 export interface FieldOverride {
   matcher: { id: string; options?: unknown };
-  properties: { id: string; value: unknown }[];
+  properties: { id: string; value?: unknown }[];
 }
 
 /** dashkit extension: how a panel behaves on a narrow screen. */

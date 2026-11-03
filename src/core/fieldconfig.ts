@@ -9,7 +9,8 @@ export function resolveFieldConfig(panel: Panel, field: Field, frame: DataFrame,
   let config: FieldConfig = mergeConfig(panel.fieldConfig?.defaults ?? {}, field.config ?? {});
   for (const o of panel.fieldConfig?.overrides ?? []) {
     if (!fieldMatches(o.matcher, field, frame, displayName)) continue;
-    for (const p of o.properties) config = setPath(config, p.id, p.value);
+    // A property not given a value yet changes nothing.
+    for (const p of o.properties) if (p.value !== undefined) config = setPath(config, p.id, p.value);
   }
   return config;
 }

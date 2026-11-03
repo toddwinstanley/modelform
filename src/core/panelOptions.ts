@@ -4,8 +4,9 @@
  * pane is drawn from these, and the loader uses them to drop values of the wrong type, since
  * the schema types `options` and `custom` only loosely.
  */
+import { mappingProblem } from './mappings';
 import { REDUCER_LABELS } from './reduce';
-import type { Panel } from './schema';
+import type { FieldOverride, Panel } from './schema';
 
 export type OptionControl =
   | { kind: 'boolean' }
@@ -17,7 +18,9 @@ export type OptionControl =
   /** A Grafana color name or a CSS color. */
   | { kind: 'color' }
   /** fieldConfig.defaults.thresholds: a base color and steps. */
-  | { kind: 'thresholds' };
+  | { kind: 'thresholds' }
+  /** fieldConfig.defaults.mappings: display text and colors for values. */
+  | { kind: 'mappings' };
 
 export interface PanelOption {
   /** Dotted path in the panel, e.g. "options.legend.showLegend" or "fieldConfig.defaults.custom.lineWidth". */
@@ -34,11 +37,11 @@ export interface PanelOption {
   get?(panel: Panel): unknown;
   set?(panel: Panel, value: unknown): Panel;
   /** The JSON type the stored value must have; defaults from the control. */
-  stored?: 'boolean' | 'number' | 'string' | 'string[]' | 'object';
+  stored?: 'boolean' | 'number' | 'string' | 'string[]' | 'object' | 'list';
 }
 
 /** Categories in the order the options pane lists them. */
-export const OPTION_CATEGORIES = ['Panel', 'Value', 'Legend', 'Graph styles', 'Axis', 'Table', 'Text', 'Standard options', 'Thresholds', 'Map'] as const;
+export const OPTION_CATEGORIES = ['Panel', 'Value', 'Legend', 'Graph styles', 'Axis', 'Table', 'Text', 'Standard options', 'Value mappings', 'Thresholds', 'Map'] as const;
 
 /** Units dashkit formats specially; anything else formats as "short". `suffix:` and `prefix:` units take any text. */
 export const UNIT_CHOICES: { label: string; value: string }[] = [
@@ -97,6 +100,15 @@ const THRESHOLDS: PanelOption = {
   help: 'The color a value takes from the highest step at or below it.',
   control: { kind: 'thresholds' },
   stored: 'object',
+};
+
+const MAPPINGS: PanelOption = {
+  path: field('mappings'),
+  label: 'Value mappings',
+  category: 'Value mappings',
+  help: 'Text, and optionally a color, in place of a value. The first that matches is used.',
+  control: { kind: 'mappings' },
+  stored: 'list',
 };
 
 const CALC: PanelOption = {
@@ -158,6 +170,7 @@ const BY_TYPE: Record<string, PanelOption[]> = {
     AXIS_PLACEMENT,
     { path: field('custom.axisGridShow'), label: 'Show grid lines', category: 'Axis', default: true, control: { kind: 'boolean' } },
     ...STANDARD,
+    MAPPINGS,
   ],
   stat: [
     CALC,
@@ -165,11 +178,12 @@ const BY_TYPE: Record<string, PanelOption[]> = {
     { path: 'options.graphMode', label: 'Graph', category: 'Value', help: 'A sparkline behind the value.', default: 'area', control: { kind: 'select', choices: choices('area', 'none') } },
     { path: 'options.orientation', label: 'Orientation', category: 'Value', help: 'How several values are laid out.', default: 'auto', control: { kind: 'select', choices: choices('auto', 'horizontal', 'vertical') } },
     ...STANDARD,
+    MAPPINGS,
     THRESHOLDS,
   ],
-  gauge: [CALC, ...STANDARD, THRESHOLDS],
-  bargauge: [CALC, ...STANDARD, THRESHOLDS],
-  piechart: [CALC, { path: 'options.pieType', label: 'Pie type', category: 'Value', default: 'donut', control: { kind: 'select', choices: choices('donut', 'pie') } }, LEGEND, ...STANDARD],
+  gauge: [CALC, ...STANDARD, MAPPINGS, THRESHOLDS],
+  bargauge: [CALC, ...STANDARD, MAPPINGS, THRESHOLDS],
+  piechart: [CALC, { path: 'options.pieType', label: 'Pie type', category: 'Value', default: 'donut', control: { kind: 'select', choices: choices('donut', 'pie') } }, LEGEND, ...STANDARD, MAPPINGS],
   table: [
     {
       path: field('custom.cellOptions.type'),
@@ -191,6 +205,7 @@ const BY_TYPE: Record<string, PanelOption[]> = {
     { path: field('custom.cellOptions.wrapText'), label: 'Wrap text', category: 'Table', default: false, control: { kind: 'boolean' } },
     ...STANDARD,
     { path: field('noValue'), label: 'No value', category: 'Standard options', help: 'Shown in empty cells.', control: { kind: 'text' } },
+    MAPPINGS,
     THRESHOLDS,
   ],
   text: [
@@ -201,6 +216,7 @@ const BY_TYPE: Record<string, PanelOption[]> = {
     { path: 'options.tooltip.mode', label: 'Tooltip', category: 'Map', default: 'details', control: { kind: 'select', choices: [{ label: 'Details', value: 'details' }, { label: 'None', value: 'none' }] } },
     { path: 'options.controls.showZoom', label: 'Show zoom buttons', category: 'Map', default: true, control: { kind: 'boolean' } },
     ...STANDARD,
+    MAPPINGS,
   ],
 };
 BY_TYPE.graph = BY_TYPE.timeseries;
@@ -260,6 +276,8 @@ function storedType(option: PanelOption): NonNullable<PanelOption['stored']> {
       return 'number';
     case 'thresholds':
       return 'object';
+    case 'mappings':
+      return 'list';
     default:
       return 'string';
   }
@@ -273,6 +291,8 @@ function fits(value: unknown, type: NonNullable<PanelOption['stored']>): boolean
       return Array.isArray(value) && value.every((v) => typeof v === 'string');
     case 'object':
       return isObject(value);
+    case 'list':
+      return Array.isArray(value);
     default:
       return typeof value === type;
   }
@@ -294,12 +314,121 @@ export function cleanPanelOptions(panel: Panel): { path: string; message: string
       const last = i === keys.length - 1;
       const type = last ? storedType(option) : 'object';
       if (!fits(node[k], type)) {
-        removed.push({ path: `.${keys.slice(0, i + 1).join('.')}`, message: `must be ${type === 'string[]' ? 'a list of strings' : type === 'object' ? 'an object' : `a ${type}`}` });
+        removed.push({ path: `.${keys.slice(0, i + 1).join('.')}`, message: mustBe(type) });
         delete node[k];
         break;
       }
       if (!last) node = node[k] as Record<string, unknown>;
+      else if (option.control.kind === 'mappings') removed.push(...cleanMappings(node[k] as unknown[], `.${option.path}`));
     }
   }
+  removed.push(...cleanOverrides(panel));
   return removed;
+}
+
+const mustBe = (type: NonNullable<PanelOption['stored']>) =>
+  `must be ${type === 'string[]' ? 'a list of strings' : type === 'object' ? 'an object' : type === 'list' ? 'a list' : `a ${type}`}`;
+
+/** Removes, in place, mappings the renderer can't use. */
+function cleanMappings(list: unknown[], at: string): { path: string; message: string }[] {
+  const removed: { path: string; message: string }[] = [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const problem = mappingProblem(list[i]);
+    if (!problem) continue;
+    removed.unshift({ path: `${at}[${i}]`, message: problem });
+    list.splice(i, 1);
+  }
+  return removed;
+}
+
+/** Override property ids are dotted paths into a field's config. */
+const PROPERTY_ID = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/;
+const UNSAFE_KEY = /(^|\.)(__proto__|constructor|prototype)(\.|$)/;
+
+/** Removes, in place, overrides and override properties the renderer can't use. */
+function cleanOverrides(panel: Panel): { path: string; message: string }[] {
+  const fc = panel.fieldConfig as Record<string, unknown> | undefined;
+  if (!isObject(fc) || fc.overrides === undefined) return [];
+  if (!Array.isArray(fc.overrides)) {
+    delete fc.overrides;
+    return [{ path: '.fieldConfig.overrides', message: 'must be a list' }];
+  }
+  const removed: { path: string; message: string }[] = [];
+  const known = new Map(overrideProperties(panel.type).map((p) => [p.id, p]));
+  const overrides = fc.overrides as unknown[];
+  for (let i = overrides.length - 1; i >= 0; i--) {
+    const o = overrides[i];
+    const at = `.fieldConfig.overrides[${i}]`;
+    if (!isObject(o) || !isObject(o.matcher) || typeof o.matcher.id !== 'string' || !Array.isArray(o.properties)) {
+      removed.unshift({ path: at, message: 'must have a matcher with an id and a list of properties' });
+      overrides.splice(i, 1);
+      continue;
+    }
+    const props = o.properties as unknown[];
+    const mine: { path: string; message: string }[] = [];
+    for (let j = props.length - 1; j >= 0; j--) {
+      const p = props[j];
+      const pat = `${at}.properties[${j}]`;
+      let problem: string | undefined;
+      if (!isObject(p) || typeof p.id !== 'string' || !PROPERTY_ID.test(p.id) || UNSAFE_KEY.test(p.id)) problem = 'must have an id that is a dotted path';
+      else if (p.value !== undefined && known.has(p.id)) {
+        const type = storedType(known.get(p.id)!.option);
+        if (!fits(p.value, type)) problem = `${p.id} ${mustBe(type)}`;
+        else if (type === 'list' && known.get(p.id)!.option.control.kind === 'mappings') mine.unshift(...cleanMappings(p.value as unknown[], `${pat}.value`));
+      }
+      if (!problem) continue;
+      mine.unshift({ path: pat, message: problem });
+      props.splice(j, 1);
+    }
+    removed.unshift(...mine);
+  }
+  return removed;
+}
+
+/** Grafana's field matchers that dashkit applies. Overrides with other matchers are kept but match nothing. */
+export const OVERRIDE_MATCHERS: { label: string; value: string; help: string }[] = [
+  { label: 'Fields with name', value: 'byName', help: 'The series or column name, before any display name.' },
+  { label: 'Fields matching regex', value: 'byRegexp', help: 'Tested against the display name.' },
+  { label: 'Fields returned by query', value: 'byFrameRefID', help: 'Every field of one query.' },
+  { label: 'Fields with type', value: 'byType', help: 'number, string, time or boolean.' },
+];
+
+export interface OverrideProperty {
+  /** The property id, a path into the field's config, e.g. "unit" or "custom.lineWidth". */
+  id: string;
+  /** How it's edited; its default is the panel's. */
+  option: PanelOption;
+  /** For values not stored as the control shows them (a fixed color is stored as a color object). */
+  get?(value: unknown): unknown;
+  set?(value: unknown): unknown;
+}
+
+const FIELD_PREFIX = 'fieldConfig.defaults.';
+
+/** What an override can set on the fields it matches, for a panel type: its field options, with one Color in place of the color scheme pair. */
+export function overrideProperties(type: string): OverrideProperty[] {
+  const out: OverrideProperty[] = [];
+  for (const option of panelOptions(type)) {
+    if (!option.path.startsWith(FIELD_PREFIX) || option.path === field('color.fixedColor')) continue;
+    if (option.path === field('color.mode'))
+      out.push({
+        id: 'color',
+        option: { path: field('color'), label: 'Color', category: 'Standard options', help: 'One color for these fields.', control: { kind: 'color' }, stored: 'object' },
+        get: (v) => (isObject(v) ? v.fixedColor : undefined),
+        set: (v) => (v === undefined || v === '' ? undefined : { mode: 'fixed', fixedColor: v }),
+      });
+    else out.push({ id: option.path.slice(FIELD_PREFIX.length), option });
+  }
+  return out;
+}
+
+/** The panel's overrides, or none. */
+export function panelOverrides(panel: Panel): FieldOverride[] {
+  const o = panel.fieldConfig?.overrides;
+  return Array.isArray(o) ? o : [];
+}
+
+/** A copy of the panel with its overrides replaced; none removes the key. */
+export function setOverrides(panel: Panel, overrides: FieldOverride[]): Panel {
+  return setOptionValue(panel, 'fieldConfig.overrides', overrides.length ? overrides : undefined);
 }
