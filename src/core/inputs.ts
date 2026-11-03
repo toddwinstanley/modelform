@@ -44,6 +44,8 @@ export interface InputOptions {
    * "always" records it on every Save, so a default like "last" is kept with each save.
    */
   record?: 'changed' | 'always';
+  /** Save waits until this has a value. */
+  required?: boolean;
   /** input-select only. */
   choices?: InputChoice[];
   /**
@@ -67,14 +69,14 @@ export interface InputOptions {
 
 /** The options each input type reads, for editors to offer. */
 export const INPUT_OPTION_KEYS: Record<InputType, (keyof InputOptions)[]> = {
-  'input-number': ['metric', 'unit', 'step', 'min', 'max', 'default', 'record'],
-  'input-slider': ['metric', 'min', 'max', 'step', 'unit', 'labels', 'default', 'record'],
-  'input-select': ['metric', 'choices', 'choicesFrom', 'multi', 'placeholder', 'default', 'record'],
+  'input-number': ['metric', 'unit', 'step', 'min', 'max', 'required', 'default', 'record'],
+  'input-slider': ['metric', 'min', 'max', 'step', 'unit', 'labels', 'required', 'default', 'record'],
+  'input-select': ['metric', 'choices', 'choicesFrom', 'multi', 'placeholder', 'required', 'default', 'record'],
   'input-toggle': ['metric', 'default', 'record'],
-  'input-rating': ['metric', 'min', 'max', 'default', 'record'],
-  'input-text': ['metric', 'placeholder', 'suggest', 'suggestWith', 'default', 'record'],
+  'input-rating': ['metric', 'min', 'max', 'required', 'default', 'record'],
+  'input-text': ['metric', 'placeholder', 'suggest', 'suggestWith', 'required', 'default', 'record'],
   'input-counter': ['metric', 'increment', 'unit'],
-  'input-duration': ['metric', 'placeholder', 'default', 'record'],
+  'input-duration': ['metric', 'placeholder', 'required', 'default', 'record'],
 };
 
 export const INPUT_TYPES = Object.keys(INPUT_OPTION_KEYS) as InputType[];
@@ -136,6 +138,19 @@ export function toEntries(panel: InputPanel, value: InputValue, ts: number): New
       ? { metric, ts, value: null, text: v }
       : { metric, ts, value: typeof v === 'boolean' ? (v ? 1 : 0) : v, text: null };
   return Array.isArray(value) ? value.map(one) : [one(value)];
+}
+
+/** Why a value can't be saved as it is: empty when required, or outside a number input's min and max. */
+export function inputProblem(panel: InputPanel, value: InputValue): string | undefined {
+  const o = panel.options;
+  const empty = value == null || value === '' || (Array.isArray(value) && !value.length);
+  if (empty) return o.required && INPUT_OPTION_KEYS[panel.type]?.includes('required') ? 'Required' : undefined;
+  if ((panel.type === 'input-number' || panel.type === 'input-slider') && typeof value === 'number') {
+    const unit = o.unit ? ` ${o.unit}` : '';
+    if (typeof o.min === 'number' && value < o.min) return `At least ${o.min}${unit}`;
+    if (typeof o.max === 'number' && value > o.max) return `At most ${o.max}${unit}`;
+  }
+  return undefined;
 }
 
 export function entryToInputValue(panel: InputPanel, entry: Entry | undefined): InputValue {

@@ -9,6 +9,8 @@ export interface InputFormState {
   store: EntryStore;
   /** Runtime choice lists for input-select panels with `choicesFrom`. */
   choices: Record<string, InputChoice[]>;
+  /** Why the input's value can't be saved, once that's worth showing. */
+  problem?(metric: string): string | undefined;
 }
 
 export const InputFormContext = createContext<InputFormState | null>(null);

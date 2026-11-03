@@ -58,12 +58,36 @@ describe('applyJsonEdits', () => {
 });
 
 describe('diffJson', () => {
-  it('sets changed leaves, removes dropped keys, and replaces resized arrays', () => {
+  it('sets changed leaves, removes dropped keys, and inserts into resized arrays', () => {
     expect(diffJson({ a: 1, b: { c: 2, d: 3 }, e: [1] }, { a: 1, b: { c: 5 }, e: [1, 2] })).toEqual([
       { path: ['b', 'd'], remove: true },
       { path: ['b', 'c'], value: 5 },
-      { path: ['e'], value: [1, 2] },
+      { path: ['e', 1], value: 2, insert: true },
     ]);
+  });
+
+  it('adds or removes array elements between the ones that match, editing the rest in place', () => {
+    expect(diffJson([1, 2, 3], [1, 9, 2, 3])).toEqual([{ path: [1], value: 9, insert: true }]);
+    expect(diffJson([1, 2, 3, 4], [1, 4])).toEqual([
+      { path: [2], remove: true },
+      { path: [1], remove: true },
+    ]);
+    expect(diffJson([{ a: 1 }, 2], [{ a: 5 }, 7, 8])).toEqual([
+      { path: [0, 'a'], value: 5 },
+      { path: [1], value: 7 },
+      { path: [2], value: 8, insert: true },
+    ]);
+  });
+
+  it('keeps how untouched elements were written when one is added or removed', () => {
+    const text = '{\n  "tabs": [\n    { "id": "a", "title": "A" },\n    {\n      "id": "b",\n      "title": "B"\n    }\n  ]\n}';
+    const before = JSON.parse(text);
+    const added = applyJsonEdits(text, diffJson(before, { tabs: [...before.tabs, { id: 'c', title: 'C' }] }));
+    expect(added).toContain('{ "id": "a", "title": "A" },\n    {\n      "id": "b",');
+    expect(JSON.parse(added).tabs.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c']);
+    const removed = applyJsonEdits(text, diffJson(before, { tabs: [before.tabs[1]] }));
+    expect(JSON.parse(removed)).toEqual({ tabs: [{ id: 'b', title: 'B' }] });
+    expect(removed).toContain('{\n      "id": "b",');
   });
 });
 

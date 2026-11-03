@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -21,6 +21,7 @@ import { interpolate } from '../core/variables';
 import { useDashboard, usePanelData, usePanelLinks } from './context';
 import { LinkIcon } from './links';
 import { RenderBoundary } from './RenderBoundary';
+import { InputFormContext } from './inputs/formContext';
 import { InputPanelBody } from './inputs/InputPanels';
 import { panelComponent } from './panels/registry';
 import { useLayout } from './panels/common';
@@ -210,9 +211,11 @@ function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
   const { dashboard, variables, variableInfo } = useDashboard();
   const { resolve, openLinks } = usePanelLinks(panel);
   const input = isInputPanel(panel);
+  const form = useContext(InputFormContext);
+  const problem = input ? form?.problem?.(panel.options.metric) : undefined;
   const hasLinks = !!panel.links?.length;
-  const hasTitle = !!panel.title || hasLinks;
-  const title = hasTitle ? interpolate(panel.title!, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
+  const hasTitle = !!panel.title || hasLinks || !!problem;
+  const title = panel.title ? interpolate(panel.title, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
   return (
     <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
       {hasTitle && (
@@ -220,6 +223,11 @@ function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
           <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
             {title}
           </Text>
+          {!!problem && (
+            <Text style={[styles.problem, { color: theme.danger }]} numberOfLines={1} accessibilityRole="alert">
+              {problem}
+            </Text>
+          )}
           {hasLinks && (
             <Pressable
               onPress={() => openLinks(resolve(panel.links), title || undefined)}
@@ -283,6 +291,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, height: TITLE_H - 8, marginBottom: 8 },
   title: { flex: 1, fontSize: 13, fontWeight: '600' },
   titleLink: { paddingTop: 1 },
+  problem: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   body: { flex: 1 },
   errorTitle: { flex: 0, marginBottom: 6 },
   errorText: { fontSize: 12, lineHeight: 17 },

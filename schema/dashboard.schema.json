@@ -882,6 +882,10 @@
           ],
           "description": "\"changed\" (the default) records the value only when it was edited before Save; \"always\" records it on every Save, so a default like \"last\" is kept with each save."
         },
+        "required": {
+          "type": "boolean",
+          "description": "Save waits until this has a value."
+        },
         "choices": {
           "type": "array",
           "items": {

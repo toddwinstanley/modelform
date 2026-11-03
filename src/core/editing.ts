@@ -8,7 +8,7 @@ import { isInputType } from './inputs';
 import { applyJsonEdits } from './jsonEdit';
 import { LOCAL_DATASOURCE_TYPE } from './local';
 import type { Panel } from './schema';
-import { assembleBundle, BUNDLE_ACCEPT, bundleRoot, isBundleResponse, resolveUrl, type ConfigIssue, type FetchJson } from './manifest';
+import { assembleBundle, BUNDLE_ACCEPT, bundleRoot, isBundleResponse, resolveUrl, type ConfigIssue, type FetchJson, type LoadResult } from './manifest';
 
 export interface Located {
   /** Character offset and length of the text the issue is about. */
@@ -141,6 +141,25 @@ export async function checkFiles(files: Record<string, string>, manifestPath: st
     out[target].push({ severity: issue.severity, at, message: issue.message, ...locate(files[target], r.tree, at) });
   }
   return out;
+}
+
+/**
+ * The bundle the app would make of draft files (path → text), to preview them as it would show
+ * them; no bundle when the app would refuse them.
+ */
+export async function bundleFromFiles(files: Record<string, string>, manifestPath: string): Promise<LoadResult> {
+  const manifest = parseJsonText(files[manifestPath] ?? '');
+  if (manifest.errors.length) return { issues: [{ severity: 'error', path: manifestPath, message: manifest.errors[0].message }] };
+  return assembleBundle(
+    manifest.value,
+    async (path) => {
+      if (!(path in files)) throw new Error(NOT_FOUND);
+      const r = parseJsonText(files[path]);
+      if (r.errors.length) throw new Error(r.errors[0].message);
+      return r.value;
+    },
+    manifestPath,
+  );
 }
 
 /** `forms/daily.json: panels[0]` → file and path. A bare document path is a fetch failure: file it under the manifest's reference to it. */

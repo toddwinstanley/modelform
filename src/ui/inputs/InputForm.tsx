@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { entryToInputValue, inputPanels, toEntries, type Entry, type InputChoice, type InputValue, type NewEntry } from '../../core/inputs';
+import { entryToInputValue, inputPanels, inputProblem, toEntries, type Entry, type InputChoice, type InputValue, type NewEntry } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';
@@ -44,6 +44,8 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
   const [edits, setEdits] = useState<Record<string, InputValue>>({});
   const [offsetMs, setOffsetMs] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
+  // After a Save is refused, every problem shows; before it, only those of values being edited.
+  const [checked, setChecked] = useState(false);
 
   // Reloads as the store changes, so "last" follows each save.
   useEffect(() => {
@@ -76,13 +78,26 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
       isDirty: (m) => m in edits,
       store,
       choices,
+      problem: (m) => {
+        const p = panels.find((x) => x.options.metric === m);
+        return p && (checked || m in edits) ? inputProblem(p, m in edits ? edits[m] : m in given ? given[m] : defaults[m] ?? null) : undefined;
+      },
     }),
-    [edits, defaults, given, store, choices],
+    [edits, defaults, given, store, choices, panels, checked],
   );
 
   const dirty = Object.keys(edits).length;
 
   const save = useCallback(async () => {
+    const problems = panels.flatMap((p) => {
+      const problem = inputProblem(p, state.value(p.options.metric));
+      return problem ? [`${p.title || p.options.metric}: ${problem.toLowerCase()}`] : [];
+    });
+    if (problems.length) {
+      setChecked(true);
+      setStatus(problems.length === 1 ? `Can’t save. ${problems[0]}` : `Can’t save: ${problems.length} fields need fixing`);
+      return;
+    }
     const ts = header !== undefined ? (timestamp?.() ?? Date.now()) : Date.now() + offsetMs;
     const entries = panels
       .filter((p) => p.options.metric in edits || p.options.record === 'always')
@@ -92,6 +107,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
     if (!extra) return;
     const added = await store.add([...entries, ...extra]);
     setEdits({});
+    setChecked(false);
     setOffsetMs(0);
     setStatus(`Saved ${added.length} ${added.length === 1 ? 'value' : 'values'}`);
     onSaved?.(added.length, added);
@@ -104,11 +120,19 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
           header={header !== undefined ? header : <TimestampPicker offsetMs={offsetMs} onChange={setOffsetMs} />}
           footer={
             <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
-              <Text style={[styles.status, { color: theme.textSecondary }]}>
+              <Text style={[styles.status, { color: status?.startsWith('Can’t') ? theme.danger : theme.textSecondary }]}>
                 {status ?? (dirty ? `${dirty} unsaved ${dirty === 1 ? 'change' : 'changes'}` : 'Nothing to save')}
               </Text>
               {dirty > 0 && (
-                <Pressable onPress={() => setEdits({})} style={styles.secondary} accessibilityRole="button">
+                <Pressable
+                  onPress={() => {
+                    setEdits({});
+                    setChecked(false);
+                    setStatus(null);
+                  }}
+                  style={styles.secondary}
+                  accessibilityRole="button"
+                >
                   <Text style={{ color: theme.textSecondary, fontWeight: '500' }}>Discard</Text>
                 </Pressable>
               )}

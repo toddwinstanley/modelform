@@ -91,9 +91,10 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * The smallest edits that turn `before` into `after`: changed leaves are set, keys added or
- * removed, and arrays that changed length are replaced whole (except where the caller
- * handles them, as diffPanels does).
+ * The smallest edits that turn `before` into `after`: changed leaves are set and keys added or
+ * removed. In arrays, elements that match at either end are kept, and between them elements
+ * are edited in place, then removed or inserted, so adding or removing one leaves the rest as
+ * they were written.
  */
 export function diffJson(before: unknown, after: unknown, path: JSONPath = []): JsonEdit[] {
   if (deepEqual(before, after)) return [];
@@ -103,6 +104,23 @@ export function diffJson(before: unknown, after: unknown, path: JSONPath = []): 
     for (const k of Object.keys(after)) if (after[k] !== undefined) edits.push(...diffJson(before[k], after[k], [...path, k]));
     return edits;
   }
-  if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) return before.flatMap((v, i) => diffJson(v, after[i], [...path, i]));
+  if (Array.isArray(before) && Array.isArray(after)) return diffArray(before, after, path);
   return [{ path, value: after }];
+}
+
+function diffArray(before: unknown[], after: unknown[], path: JSONPath): JsonEdit[] {
+  if (before.length === after.length) return before.flatMap((v, i) => diffJson(v, after[i], [...path, i]));
+  let start = 0;
+  while (start < before.length && start < after.length && deepEqual(before[start], after[start])) start++;
+  let end = 0;
+  while (end < before.length - start && end < after.length - start && deepEqual(before[before.length - 1 - end], after[after.length - 1 - end])) end++;
+  const removed = before.length - start - end;
+  const added = after.length - start - end;
+  const edits: JsonEdit[] = [];
+  // Between the matching ends: edit as many in place as both have, then remove or insert the rest.
+  const both = Math.min(removed, added);
+  for (let i = 0; i < both; i++) edits.push(...diffJson(before[start + i], after[start + i], [...path, start + i]));
+  for (let i = removed - 1; i >= both; i--) edits.push({ path: [...path, start + i], remove: true });
+  for (let i = both; i < added; i++) edits.push({ path: [...path, start + i], value: after[start + i], insert: true });
+  return edits;
 }
