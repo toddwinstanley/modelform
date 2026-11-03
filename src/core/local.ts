@@ -20,6 +20,11 @@ export interface EntryStore {
   list(query: { metrics: string[]; from?: number; to?: number }): Promise<Entry[]>;
   latest(metric: string): Promise<Entry | undefined>;
   remove(id: string): Promise<void>;
+  /**
+   * Remove `ids` and add `entries` as one change, so an edited record is never left half
+   * saved. Stores without it get a remove of each id followed by an add.
+   */
+  replace?(ids: string[], entries: NewEntry[]): Promise<Entry[]>;
   /** Subscribe to changes so panels can refresh after a save. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }
@@ -227,6 +232,13 @@ export class MemoryEntryStore implements EntryStore {
   async remove(id: string) {
     this.entries = this.entries.filter((e) => e.id !== id);
     this.emit();
+  }
+
+  async replace(ids: string[], entries: NewEntry[]) {
+    const added = entries.map((e) => ({ ...e, id: String(this.nextId++) }));
+    this.entries = [...this.entries.filter((e) => !ids.includes(e.id)), ...added];
+    this.emit();
+    return added;
   }
 
   subscribe(listener: () => void) {
