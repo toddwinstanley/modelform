@@ -29,7 +29,7 @@ function renderIndex(entries) {
   const ids = entries.length ? entries.map((e) => `'${e.id}'`).join(' | ') : 'never';
   const rows = entries.map((e) => `  ${key(e.id)}: require('./${e.file}'),\n`).join('');
   return `${HEADER}
-import type { Dashboard } from 'modelform';
+import type { Dashboard } from '@modelform/react-native';
 
 export type BundledId = ${ids};
 

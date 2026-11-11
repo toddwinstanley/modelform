@@ -1,5 +1,5 @@
 {
-  "name": "modelform",
+  "name": "@modelform/react-native",
   "version": "0.1.0",
   "description": "Render Grafana-compatible dashboard JSON, and input forms in the same format, as native React Native panels.",
   "keywords": [
@@ -41,6 +41,7 @@
     "tools/dashboards.js"
   ],
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",

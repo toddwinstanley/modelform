@@ -6,7 +6,7 @@
 //   schema/dashboard.schema.json       dashboards and forms (loose: Grafana exports carry many keys modelform ignores)
 //   src/core/generated/validators.js   both, compiled ahead of time by Ajv so validating needs no eval (Hermes)
 //
-// Run `pnpm --filter modelform schema` after changing the types; a test fails while they're stale.
+// Run `pnpm schema` after changing the types; a test fails while they're stale.
 const fs = require('node:fs');
 const path = require('node:path');
 

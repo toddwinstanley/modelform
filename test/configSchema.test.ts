@@ -10,7 +10,7 @@ const jsonFiles = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? jsonFiles(path.join(dir, d.name)) : d.name.endsWith('.json') ? [path.join(dir, d.name)] : []));
 
 describe('generated schema', () => {
-  it('is up to date with the types (run `pnpm --filter modelform schema`)', () => {
+  it('is up to date with the types (run `pnpm schema`)', () => {
     expect(stale()).toEqual([]);
   }, 30_000);
 });

@@ -20,7 +20,7 @@ exports, and ignores keys it doesn't understand.
 ## Install
 
 ```sh
-npm install modelform react-native-svg react-native-safe-area-context
+npm install @modelform/react-native react-native-svg react-native-safe-area-context
 ```
 
 `react` and `react-native` are peer dependencies too. It works in Expo apps, including Expo Go.
@@ -28,7 +28,7 @@ npm install modelform react-native-svg react-native-safe-area-context
 ## Render a dashboard
 
 ```tsx
-import { DashboardProvider, DashboardToolbar, DashboardView, LocalDataSource, MemoryEntryStore } from 'modelform';
+import { DashboardProvider, DashboardToolbar, DashboardView, LocalDataSource, MemoryEntryStore } from '@modelform/react-native';
 import dashboard from './dashboards/weight.json';
 
 const store = new MemoryEntryStore();
@@ -57,7 +57,7 @@ service-account token. Grafana runs the queries, so any of its datasources works
 ## Record with a form
 
 ```tsx
-import { InputForm } from 'modelform';
+import { InputForm } from '@modelform/react-native';
 import form from './forms/daily.json';
 
 <InputForm dashboard={form} store={store} onSaved={(count) => console.log(`saved ${count}`)} />;
@@ -82,15 +82,15 @@ For anything beyond a demo, implement `EntryStore` over your own storage, such a
 ## Bundled dashboards
 
 `modelform dashboards [dir] [--watch]` writes an `index.ts` that imports every `.json` file in a folder, so
-the app can bundle them by name. From `metro.config.js`, `require('modelform/dashboards').watchDashboards(dir)`
+the app can bundle them by name. From `metro.config.js`, `require('@modelform/react-native/dashboards').watchDashboards(dir)`
 keeps that file current while Metro runs.
 
 ## Validation and schemas
 
-`modelform/core` holds everything that doesn't render: the types, validation, layout, transformations, the
+`@modelform/react-native/core` holds everything that doesn't render: the types, validation, layout, transformations, the
 datasources and the config loader. It runs in Node too, for example to check configs on a server.
 
-`modelform/schema/app.schema.json` (app manifests) and `modelform/schema/dashboard.schema.json` (dashboards
+`@modelform/react-native/schema/app.schema.json` (app manifests) and `@modelform/react-native/schema/dashboard.schema.json` (dashboards
 and forms) give editors completion and inline checks.
 
 ## License
