@@ -1,5 +1,5 @@
 /**
- * JSON Schema checks for app configs, from schemas generated off dashkit's own types
+ * JSON Schema checks for app configs, from schemas generated off modelform's own types
  * (tools/schema.js). Editors use the same schemas for completions and inline errors.
  */
 import appSchemaJson from '../../schema/app.schema.json';

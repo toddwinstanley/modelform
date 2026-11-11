@@ -1,0 +1,113 @@
+{
+  "uid": "tracker-insights",
+  "title": "Insights",
+  "time": { "from": "now-1y", "to": "now" },
+  "panels": [
+    { "id": 20, "type": "row", "title": "Track days", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "id": 21, "type": "timeseries", "title": "Best lap",
+      "description": "Fastest lap logged on each track day.",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "best-lap", "alias": "Best lap", "aggregate": "min", "bucket": "1d", "fillZero": false }],
+      "fieldConfig": { "defaults": { "unit": "clocks", "custom": { "showPoints": "always" } } }
+    },
+    {
+      "id": 22, "type": "barchart", "title": "Pace",
+      "description": "Average pace rating per track day (1–5).",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "pace", "alias": "Pace", "aggregate": "avg", "bucket": "1d", "fillZero": false }],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "Time" } }],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 1, "min": 0, "max": 5 } }
+    },
+    {
+      "id": 23, "type": "barchart", "title": "Balance",
+      "description": "Average per track day. Below 0 is understeer, above 0 oversteer.",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "entry-balance", "alias": "Entry", "aggregate": "avg", "bucket": "1d", "fillZero": false }, { "refId": "B", "metric": "mid-balance", "alias": "Mid", "aggregate": "avg", "bucket": "1d", "fillZero": false }, { "refId": "C", "metric": "exit-balance", "alias": "Exit", "aggregate": "avg", "bucket": "1d", "fillZero": false }],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "Time" } }],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 1, "min": -5, "max": 5 } }
+    },
+    {
+      "id": 24, "type": "barchart", "title": "Tire pressures (psi)",
+      "description": "Average pressure logged per track day.",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "tire-fl", "alias": "FL", "aggregate": "avg", "bucket": "1d", "fillZero": false }, { "refId": "B", "metric": "tire-fr", "alias": "FR", "aggregate": "avg", "bucket": "1d", "fillZero": false }, { "refId": "C", "metric": "tire-rl", "alias": "RL", "aggregate": "avg", "bucket": "1d", "fillZero": false }, { "refId": "D", "metric": "tire-rr", "alias": "RR", "aggregate": "avg", "bucket": "1d", "fillZero": false }],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "Time" } }],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 1 } }
+    },
+    { "id": 1, "type": "row", "title": "Tires", "gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 } },
+    {
+      "id": 2, "type": "bargauge", "title": "Sessions by tires",
+      "description": "Sessions logged in the selected time range. Corrections made in the Garage aren't included.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "tire-session", "groupBy": "text", "aggregate": "count", "bucket": "1d", "fillZero": false }],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "min": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "horizontal" }
+    },
+    {
+      "id": 3, "type": "barchart", "title": "Sessions per track day",
+      "description": "One group per day with sessions, evenly spaced however far apart the days are.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "tire-session", "groupBy": "text", "aggregate": "count", "bucket": "1d", "fillZero": false }],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "Time" } }],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "min": 0 } }
+    },
+    { "id": 4, "type": "row", "title": "At the track", "gridPos": { "x": 0, "y": 30, "w": 24, "h": 1 } },
+    {
+      "id": 5, "type": "timeseries", "title": "Sway bars",
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "sway-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "sway-fr", "alias": "FR", "fill": "previous" }, { "refId": "C", "metric": "sway-rl", "alias": "RL", "fill": "previous" }, { "refId": "D", "metric": "sway-rr", "alias": "RR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 0 } }
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Rebound (clicks)",
+      "gridPos": { "x": 0, "y": 38, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "rebound-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "rebound-fr", "alias": "FR", "fill": "previous" }, { "refId": "C", "metric": "rebound-rl", "alias": "RL", "fill": "previous" }, { "refId": "D", "metric": "rebound-rr", "alias": "RR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 0 } }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Compression (clicks)",
+      "gridPos": { "x": 12, "y": 38, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "compression-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "compression-fr", "alias": "FR", "fill": "previous" }, { "refId": "C", "metric": "compression-rl", "alias": "RL", "fill": "previous" }, { "refId": "D", "metric": "compression-rr", "alias": "RR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 0 } }
+    },
+    { "id": 8, "type": "row", "title": "In the garage", "gridPos": { "x": 0, "y": 45, "w": 24, "h": 1 } },
+    {
+      "id": 9, "type": "timeseries", "title": "Springs (kg/mm)",
+      "gridPos": { "x": 0, "y": 46, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "spring-front", "alias": "Front", "fill": "previous" }, { "refId": "B", "metric": "spring-rear", "alias": "Rear", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" } } }
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Camber (°)",
+      "gridPos": { "x": 12, "y": 46, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "camber-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "camber-fr", "alias": "FR", "fill": "previous" }, { "refId": "C", "metric": "camber-rl", "alias": "RL", "fill": "previous" }, { "refId": "D", "metric": "camber-rr", "alias": "RR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 1 } }
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Toe (°)",
+      "gridPos": { "x": 0, "y": 53, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "toe-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "toe-fr", "alias": "FR", "fill": "previous" }, { "refId": "C", "metric": "toe-rl", "alias": "RL", "fill": "previous" }, { "refId": "D", "metric": "toe-rr", "alias": "RR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 2 } }
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Caster (°)",
+      "gridPos": { "x": 12, "y": 53, "w": 12, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "caster-fl", "alias": "FL", "fill": "previous" }, { "refId": "B", "metric": "caster-fr", "alias": "FR", "fill": "previous" }],
+      "fieldConfig": { "defaults": { "custom": { "lineInterpolation": "stepAfter", "showPoints": "always" }, "decimals": 1 } }
+    }
+  ]
+}

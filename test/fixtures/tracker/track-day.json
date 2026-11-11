@@ -1,0 +1,107 @@
+{
+  "uid": "tracker-track-day",
+  "title": "Session",
+  "description": "Input form. Each input-* panel records to the metric in options.metric.",
+  "panels": [
+    { "id": 1, "type": "row", "title": "Driver", "gridPos": { "x": 0, "y": 8, "w": 24, "h": 1 } },
+    {
+      "id": 2, "type": "input-rating", "title": "Pace",
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 3 },
+      "options": { "metric": "pace", "min": 1, "max": 5 }
+    },
+    {
+      "id": 3, "type": "input-slider", "title": "Balance on Entry",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 3 },
+      "options": { "metric": "entry-balance", "min": -5, "max": 5, "step": 1, "labels": ["Understeer", "Neutral", "Oversteer"] }
+    },
+    {
+      "id": 11, "type": "input-slider", "title": "Balance Mid Corner",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 3 },
+      "options": { "metric": "mid-balance", "min": -5, "max": 5, "step": 1, "labels": ["Understeer", "Neutral", "Oversteer"] }
+    },
+    {
+      "id": 12, "type": "input-slider", "title": "Balance on Exit",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 3 },
+      "options": { "metric": "exit-balance", "min": -5, "max": 5, "step": 1, "labels": ["Understeer", "Neutral", "Oversteer"] }
+    },
+    {
+      "id": 13, "type": "input-duration", "title": "Best lap",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 3 },
+      "options": { "metric": "best-lap" }
+    },
+    { "id": 5, "type": "row", "title": "Car", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 } },
+    {
+      "id": 14, "type": "input-number", "title": "Front left (psi)",
+      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "tire-fl", "unit": "psi", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 15, "type": "input-number", "title": "Front right (psi)",
+      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "tire-fr", "unit": "psi", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 16, "type": "input-number", "title": "Rear left (psi)",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "tire-rl", "unit": "psi", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 17, "type": "input-number", "title": "Rear right (psi)",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "tire-rr", "unit": "psi", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 18, "type": "input-number", "title": "Mileage",
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 3 },
+      "options": { "metric": "mileage", "unit": "mi", "step": 1, "min": 0, "placeholder": "Odometer", "record": "always" }
+    },
+    { "id": 20, "type": "row", "title": "Conditions", "gridPos": { "x": 0, "y": 36, "w": 24, "h": 1 } },
+    {
+      "id": 21, "type": "input-slider", "title": "Surface grip",
+      "gridPos": { "x": 0, "y": 37, "w": 24, "h": 3 },
+      "options": { "metric": "surface-grip", "min": 1, "max": 5, "step": 1, "labels": ["Slippery", "Average", "Grippy"] }
+    },
+    {
+      "id": 22, "type": "input-slider", "title": "Outside temp",
+      "gridPos": { "x": 0, "y": 40, "w": 24, "h": 3 },
+      "options": { "metric": "outside-temp", "min": 30, "max": 110, "step": 1, "unit": "°F" }
+    },
+    {
+      "id": 23, "type": "input-toggle", "title": "Passenger",
+      "gridPos": { "x": 0, "y": 43, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "passenger", "default": false, "record": "always" }
+    },
+    {
+      "id": 24, "type": "input-toggle", "title": "Traffic",
+      "gridPos": { "x": 12, "y": 43, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "traffic", "default": false, "record": "always" }
+    },
+    {
+      "id": 25, "type": "input-toggle", "title": "Rain",
+      "gridPos": { "x": 0, "y": 46, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "rain", "default": false, "record": "always" }
+    },
+    {
+      "id": 26, "type": "input-toggle", "title": "Damp track",
+      "gridPos": { "x": 12, "y": 46, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "damp-track", "default": false, "record": "always" }
+    },
+    { "id": 9, "type": "row", "title": "Notes", "gridPos": { "x": 0, "y": 49, "w": 24, "h": 1 }, "collapsed": true,
+      "panels": [
+        {
+          "id": 10, "type": "input-text", "title": "",
+          "gridPos": { "x": 0, "y": 50, "w": 24, "h": 4 },
+          "options": { "metric": "note", "placeholder": "Anything worth remembering about today" }
+        }
+      ]
+    }
+  ]
+}

@@ -166,7 +166,7 @@ const TRANSFORMERS: Record<string, Transformer> = {
 };
 
 /**
- * Applies a panel's transformations in order. Ones dashkit doesn't implement are skipped,
+ * Applies a panel's transformations in order. Ones modelform doesn't implement are skipped,
  * so their panels render the untransformed data as they did before transformations were supported.
  */
 export function applyTransformations(frames: DataFrame[], transformations: Transformation[] | undefined): DataFrame[] {

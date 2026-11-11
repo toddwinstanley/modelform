@@ -32,7 +32,7 @@ export class RenderBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error) {
-    console.warn('[dashkit] render failed:', error.message);
+    console.warn('[modelform] render failed:', error.message);
   }
 
   render() {

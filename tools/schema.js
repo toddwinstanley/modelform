@@ -1,19 +1,19 @@
 #!/usr/bin/env node
-// Generates JSON Schemas for app configs from dashkit's TypeScript types, so editors and
+// Generates JSON Schemas for app configs from modelform's TypeScript types, so editors and
 // the app agree with what the renderer reads:
 //
 //   schema/app.schema.json             the manifest (strict: unknown keys are flagged)
-//   schema/dashboard.schema.json       dashboards and forms (loose: Grafana exports carry many keys dashkit ignores)
+//   schema/dashboard.schema.json       dashboards and forms (loose: Grafana exports carry many keys modelform ignores)
 //   src/core/generated/validators.js   both, compiled ahead of time by Ajv so validating needs no eval (Hermes)
 //
-// Run `pnpm --filter @spaghetti/dashkit schema` after changing the types; a test fails while they're stale.
+// Run `pnpm --filter modelform schema` after changing the types; a test fails while they're stale.
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const TSCONFIG = path.join(ROOT, 'tsconfig.json');
-const APP_ID = 'urn:spaghetti:app';
-const DASHBOARD_ID = 'urn:spaghetti:dashboard';
+const APP_ID = 'urn:modelform:app';
+const DASHBOARD_ID = 'urn:modelform:dashboard';
 
 /** Offered as completions for `panel.type`. Others are allowed: apps can registerPanel() their own. */
 const PANEL_TYPES = [
@@ -65,7 +65,7 @@ function dashboardSchema() {
       then: { required: ['options'], properties: { options: { $ref: '#/definitions/InputOptions' } } },
     },
   ];
-  return { $schema: schema.$schema, $id: DASHBOARD_ID, title: 'dashkit dashboard or form', ...schema };
+  return { $schema: schema.$schema, $id: DASHBOARD_ID, title: 'modelform dashboard or form', ...schema };
 }
 
 function appSchema() {
@@ -74,7 +74,7 @@ function appSchema() {
   schema.definitions.Dashboard = { $ref: DASHBOARD_ID };
   schema.definitions.AppManifest.properties.version = { ...schema.definitions.AppManifest.properties.version, const: 1 };
   delete schema.definitions.AppManifest.properties.version.type;
-  return prune({ $schema: schema.$schema, $id: APP_ID, title: 'Studio app config', ...schema });
+  return prune({ $schema: schema.$schema, $id: APP_ID, title: 'modelform app config', ...schema });
 }
 
 function validatorsSource(app, dashboard) {
@@ -124,6 +124,6 @@ if (require.main === module) {
   for (const [file, text] of Object.entries(outputs())) {
     fs.mkdirSync(path.dirname(path.join(ROOT, file)), { recursive: true });
     fs.writeFileSync(path.join(ROOT, file), text);
-    console.log(`dashkit: wrote ${file}`);
+    console.log(`modelform: wrote ${file}`);
   }
 }

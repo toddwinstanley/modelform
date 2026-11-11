@@ -1,9 +1,9 @@
 /**
- * The subset of the Grafana dashboard JSON model that dashkit understands.
+ * The subset of the Grafana dashboard JSON model that modelform understands.
  * Unknown keys are tolerated and ignored, so dashboards exported from Grafana
  * load as-is. See https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/view-dashboard-json-model/
  *
- * dashkit adds two extensions, both of which Grafana ignores:
+ * modelform adds two extensions, both of which Grafana ignores:
  *  - `panel.mobile` to tune phone layout per panel
  *  - `input-*` panel types for data entry forms (see inputs.ts)
  */
@@ -99,7 +99,7 @@ export interface FieldOverride {
   properties: { id: string; value?: unknown }[];
 }
 
-/** dashkit extension: how a panel behaves on a narrow screen. */
+/** modelform extension: how a panel behaves on a narrow screen. */
 export interface MobileOptions {
   /** Columns out of 24 on a phone. Defaults: w <= 6 → 12 (two-up), otherwise 24. */
   span?: number;
@@ -118,7 +118,7 @@ export interface Panel {
   targets?: Target[];
   fieldConfig?: { defaults?: FieldConfig; overrides?: FieldOverride[] };
   options?: Record<string, any>;
-  /** Applied in order to the query results. See transform.ts for the ones dashkit implements. */
+  /** Applied in order to the query results. See transform.ts for the ones modelform implements. */
   transformations?: { id: string; options?: Record<string, any>; disabled?: boolean }[];
   /** Rows only. */
   collapsed?: boolean;

@@ -1,0 +1,38 @@
+{
+  "uid": "studio-daily",
+  "title": "Daily",
+  "panels": [
+    { "id": 1, "type": "row", "title": "Body", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "id": 2, "type": "input-number", "title": "Weight",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 3 },
+      "options": { "metric": "weight", "unit": "kg", "step": 0.1, "min": 0, "default": "last" }
+    },
+    {
+      "id": 3, "type": "input-number", "title": "Sleep",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 3 },
+      "options": { "metric": "sleep", "unit": "h", "step": 0.25, "min": 0, "max": 24 }
+    },
+    { "id": 4, "type": "row", "title": "Mind", "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 } },
+    {
+      "id": 5, "type": "input-rating", "title": "Mood",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 3 },
+      "options": { "metric": "mood", "min": 1, "max": 5 }
+    },
+    {
+      "id": 6, "type": "input-slider", "title": "Energy",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 3 },
+      "options": { "metric": "energy", "min": 0, "max": 10, "step": 1, "labels": ["Drained", "OK", "Buzzing"] }
+    },
+    {
+      "id": 7, "type": "input-counter", "title": "Water",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 3 },
+      "options": { "metric": "water", "unit": "glasses" }
+    },
+    {
+      "id": 8, "type": "input-text", "title": "Notes",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 3 },
+      "options": { "metric": "notes", "placeholder": "Anything worth remembering" }
+    }
+  ]
+}

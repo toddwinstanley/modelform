@@ -250,16 +250,16 @@ describe('prepareDashboard', () => {
   const panel = (extra: object = {}) => ({ type: 'stat', title: 'T', gridPos: { x: 0, y: 0, w: 12, h: 4 }, ...extra });
   const prep = (panels: object[]) => prepareDashboard({ title: 'D', panels }, 'd.json');
 
-  it('leaves the repo’s real dashboards and forms exactly as they are', () => {
-    const root = path.resolve(__dirname, '../../..');
+  it('leaves the real dashboards and forms exactly as they are', () => {
+    const root = path.resolve(__dirname, 'fixtures');
     for (const file of [
-      'apps/studio/config/dashboards/trends.json',
-      'apps/studio/config/dashboards/workouts.json',
-      'apps/studio/config/forms/daily.json',
-      'apps/studio/config/forms/workout.json',
-      'apps/tracker/dashboards/insights.json',
-      'apps/tracker/dashboards/setup.json',
-      'apps/tracker/dashboards/track-day.json',
+      'config/dashboards/trends.json',
+      'config/dashboards/workouts.json',
+      'config/forms/daily.json',
+      'config/forms/workout.json',
+      'tracker/insights.json',
+      'tracker/setup.json',
+      'tracker/track-day.json',
     ]) {
       const json = JSON.parse(readFileSync(path.join(root, file), 'utf8'));
       const { dashboard, issues } = prepareDashboard(json, file);

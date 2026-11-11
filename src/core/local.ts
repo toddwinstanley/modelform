@@ -1,19 +1,27 @@
 import type { DataSource, QueryRequest } from './datasource';
 import type { DataFrame } from './frame';
 import type { Entry, NewEntry } from './inputs';
-import type { Target } from './schema';
+import type { DataSourceRef, Target } from './schema';
 import { addTime, parseDuration, startOf, type TimeUnit } from './time';
 
 /**
  * A datasource over entries recorded by input forms. Reference it from a panel with
- * `"datasource": {"type": "dashkit-local"}` and targets like:
+ * `"datasource": {"type": "modelform-local"}` and targets like:
  *
  *   { "refId": "A", "metric": "weight" }                                   raw points
  *   { "refId": "A", "metric": "water", "aggregate": "sum", "bucket": "1d" } daily totals
  *   { "refId": "A", "metric": "mood", "aggregate": "count", "groupBy": "text" }  one series per choice
  */
 
-export const LOCAL_DATASOURCE_TYPE = 'dashkit-local';
+export const LOCAL_DATASOURCE_TYPE = 'modelform-local';
+
+/** The type this datasource had before the library was named modelform. Still read, never written. */
+const LEGACY_LOCAL_DATASOURCE_TYPE = 'dashkit-local';
+
+/** Whether a panel or target's datasource is the local one, under its current name or its old one. */
+export function isLocalDatasource(ref: DataSourceRef | string | null | undefined): boolean {
+  return typeof ref === 'object' && ref != null && (ref.type === LOCAL_DATASOURCE_TYPE || ref.type === LEGACY_LOCAL_DATASOURCE_TYPE);
+}
 
 export interface EntryStore {
   add(entries: NewEntry[]): Promise<Entry[]>;

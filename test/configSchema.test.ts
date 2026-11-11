@@ -5,12 +5,12 @@ import { dashboardSchemaIssues, manifestSchemaIssues, pointerToPath, validateDas
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { stale } = require('../tools/schema.js');
 
-const repo = path.join(__dirname, '../../..');
+const fixtures = path.join(__dirname, 'fixtures');
 const jsonFiles = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? jsonFiles(path.join(dir, d.name)) : d.name.endsWith('.json') ? [path.join(dir, d.name)] : []));
 
 describe('generated schema', () => {
-  it('is up to date with the types (run `pnpm --filter @spaghetti/dashkit schema`)', () => {
+  it('is up to date with the types (run `pnpm --filter modelform schema`)', () => {
     expect(stale()).toEqual([]);
   }, 30_000);
 });
@@ -23,17 +23,17 @@ describe('pointerToPath', () => {
   });
 });
 
-describe('every dashboard and form in the repo', () => {
+describe('every dashboard and form in the fixtures', () => {
   const files = [
-    ...jsonFiles(path.join(repo, 'apps/tracker/dashboards')),
-    ...jsonFiles(path.join(repo, 'apps/studio/config')).filter((f) => !f.endsWith('app.json')),
+    ...jsonFiles(path.join(fixtures, 'tracker')),
+    ...jsonFiles(path.join(fixtures, 'config')).filter((f) => !f.endsWith('app.json')),
   ];
-  it.each(files.map((f) => [path.relative(repo, f), f]))('%s passes the schema', (_name, file) => {
+  it.each(files.map((f) => [path.relative(fixtures, f), f]))('%s passes the schema', (_name, file) => {
     expect(dashboardSchemaIssues(JSON.parse(fs.readFileSync(file, 'utf8')))).toEqual([]);
   });
 
-  it('includes the studio manifest', () => {
-    expect(manifestSchemaIssues(JSON.parse(fs.readFileSync(path.join(repo, 'apps/studio/config/app.json'), 'utf8')))).toEqual([]);
+  it('includes the app manifest', () => {
+    expect(manifestSchemaIssues(JSON.parse(fs.readFileSync(path.join(fixtures, 'config/app.json'), 'utf8')))).toEqual([]);
   });
 });
 

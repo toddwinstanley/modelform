@@ -117,7 +117,7 @@ export function validateManifest(json: unknown, file = 'manifest'): ConfigIssue[
  * rendering, and leave no dashboard. Otherwise values that don't fit the schema (a title
  * that's a number, say) are removed, each with a warning, so the renderer never sees them;
  * anything else the schema flags (unknown keys, mostly) is a warning, since Grafana exports
- * often carry values dashkit just ignores.
+ * often carry values modelform just ignores.
  */
 export function prepareDashboard(json: unknown, file: string): { dashboard?: Dashboard; issues: ConfigIssue[] } {
   const errors = dashboardErrors(json, file);
@@ -270,7 +270,7 @@ export interface LoadResult {
 const fileName = (url: string) => url.replace(/[?#].*$/, '').split('/').pop() || url;
 
 /** Asked for on the manifest's URL, a server that can returns the whole config in one response. */
-export const BUNDLE_TYPE = 'application/vnd.spaghetti.bundle+json';
+export const BUNDLE_TYPE = 'application/vnd.modelform.bundle+json';
 export const BUNDLE_ACCEPT = `${BUNDLE_TYPE}, application/json;q=0.9`;
 
 /**

@@ -42,7 +42,7 @@ export const darkTheme: DashTheme = {
 
 const ThemeContext = createContext<DashTheme | null>(null);
 
-/** Optional: wrap to force or customize a theme. Without it, dashkit follows the system color scheme. */
+/** Optional: wrap to force or customize a theme. Without it, modelform follows the system color scheme. */
 export function DashThemeProvider({ theme, children }: { theme: DashTheme; children: ReactNode }) {
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }

@@ -51,7 +51,7 @@ const fillTemplate = (template: string, z: number, x: number, y: number) =>
 const stripTags = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&copy;/g, '©').trim();
 
 /**
- * Tiles for one of Grafana's raster layer types. `default` (and anything dashkit can't draw, such as vector
+ * Tiles for one of Grafana's raster layer types. `default` (and anything modelform can't draw, such as vector
  * `maplibre` styles) is CARTO, Grafana's own default basemap. `retina` asks CARTO for 512px tiles.
  */
 export function tileSource(layer: { type?: string; config?: Record<string, any> } | undefined, scheme: 'light' | 'dark', retina = false): TileSource {

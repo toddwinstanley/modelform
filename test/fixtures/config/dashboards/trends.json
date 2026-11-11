@@ -1,0 +1,47 @@
+{
+  "uid": "studio-trends",
+  "title": "Trends",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Weight",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "weight" }],
+      "fieldConfig": { "defaults": { "unit": "masskg", "decimals": 1 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Avg sleep",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "sleep" }],
+      "fieldConfig": { "defaults": { "unit": "suffix: h", "decimals": 1 } },
+      "options": { "reduceOptions": { "calcs": ["mean"] } }
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Weight",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "weight", "alias": "Weight" }],
+      "fieldConfig": { "defaults": { "unit": "masskg", "decimals": 1, "custom": { "showPoints": "always" } } }
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Mood and energy",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [
+        { "refId": "A", "metric": "mood", "alias": "Mood", "aggregate": "avg", "bucket": "1d", "fillZero": false },
+        { "refId": "B", "metric": "energy", "alias": "Energy", "aggregate": "avg", "bucket": "1d", "fillZero": false }
+      ],
+      "fieldConfig": { "defaults": { "min": 0, "max": 10, "decimals": 1 } }
+    },
+    {
+      "id": 5, "type": "barchart", "title": "Water per day",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "water", "alias": "Glasses", "aggregate": "sum", "bucket": "1d" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "min": 0 } }
+    }
+  ]
+}

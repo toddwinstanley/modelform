@@ -1,0 +1,24 @@
+{
+  "uid": "studio-workout",
+  "title": "Workout",
+  "panels": [
+    {
+      "id": 1, "type": "input-select", "title": "Activity",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "options": {
+        "metric": "activity", "default": "last",
+        "choices": [{ "label": "Run", "value": "run" }, { "label": "Ride", "value": "ride" }, { "label": "Swim", "value": "swim" }, { "label": "Strength", "value": "strength" }]
+      }
+    },
+    {
+      "id": 2, "type": "input-number", "title": "Duration",
+      "gridPos": { "x": 0, "y": 3, "w": 12, "h": 3 },
+      "options": { "metric": "workout-minutes", "unit": "min", "step": 5, "min": 0 }
+    },
+    {
+      "id": 3, "type": "input-rating", "title": "Effort",
+      "gridPos": { "x": 12, "y": 3, "w": 12, "h": 3 },
+      "options": { "metric": "effort", "min": 1, "max": 5 }
+    }
+  ]
+}

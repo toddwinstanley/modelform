@@ -5,6 +5,7 @@ import {
   formatValue,
   GrafanaClient,
   interpolate,
+  isLocalDatasource,
   layoutDashboard,
   MemoryEntryStore,
   LocalDataSource,
@@ -191,6 +192,14 @@ describe('local datasource', () => {
   const day = (d: number, h = 12) => new Date(2026, 9, d, h).getTime();
   const range = { from: new Date(2026, 9, 10).getTime(), to: new Date(2026, 9, 13, 23, 59).getTime(), raw: { from: '', to: '' } };
 
+  it('recognizes its type under the current name and the old dashkit one', () => {
+    expect(isLocalDatasource({ type: 'modelform-local' })).toBe(true);
+    expect(isLocalDatasource({ type: 'dashkit-local' })).toBe(true);
+    expect(isLocalDatasource({ type: 'prometheus', uid: 'p' })).toBe(false);
+    expect(isLocalDatasource('modelform-local')).toBe(false);
+    expect(isLocalDatasource(null)).toBe(false);
+  });
+
   it('sums into calendar days with zero fill', () => {
     const entries = [
       { id: '1', metric: 'water', ts: day(10, 8), value: 1, text: null },
@@ -235,7 +244,7 @@ describe('local datasource', () => {
   it('runs end to end through queryPanel', async () => {
     const store = new MemoryEntryStore([{ metric: 'weight', ts: day(11), value: 80, text: null }]);
     const local = new LocalDataSource(store);
-    const p = panel('timeseries', 0, 0, 24, 8, { datasource: { type: 'dashkit-local' }, targets: [{ refId: 'A', metric: 'weight' }] });
+    const p = panel('timeseries', 0, 0, 24, 8, { datasource: { type: 'modelform-local' }, targets: [{ refId: 'A', metric: 'weight' }] });
     const frames = await queryPanel(p, { resolve: () => local, range, variables: {}, widthPx: 400 });
     expect(toSeries(frames)[0]).toMatchObject({ name: 'weight', values: [80] });
   });

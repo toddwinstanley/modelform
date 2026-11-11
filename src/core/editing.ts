@@ -226,7 +226,7 @@ export function newDocument(kind: 'form' | 'dashboard', title: string): string {
               type: 'timeseries',
               title: 'Value',
               gridPos: { x: 0, y: 0, w: 24, h: 8 },
-              datasource: { type: 'dashkit-local' },
+              datasource: { type: LOCAL_DATASOURCE_TYPE },
               targets: [{ refId: 'A', metric: 'value' }],
             },
           ],

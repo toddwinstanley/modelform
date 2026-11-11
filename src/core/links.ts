@@ -191,7 +191,7 @@ function decode(s: string): string {
 
 /**
  * The dashboard as a link asks to show it: its time range and the variables' current values
- * replaced by the link's. Epoch-ms times are kept as such; dashkit parses them.
+ * replaced by the link's. Epoch-ms times are kept as such; modelform parses them.
  */
 export function applyDashboardLink(dashboard: Dashboard, target: Pick<DashboardLinkTarget, 'from' | 'to' | 'vars'>): Dashboard {
   const time = target.from || target.to ? { from: target.from || dashboard.time?.from || 'now-6h', to: target.to || dashboard.time?.to || 'now' } : dashboard.time;

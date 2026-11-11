@@ -46,7 +46,7 @@ export interface PanelOption {
 /** Categories in the order the options pane lists them. */
 export const OPTION_CATEGORIES = ['Panel', 'Value', 'Legend', 'Graph styles', 'Axis', 'Table', 'Text', 'Standard options', 'Value mappings', 'Thresholds', 'Map'] as const;
 
-/** Units dashkit formats specially; anything else formats as "short". `suffix:` and `prefix:` units take any text. */
+/** Units modelform formats specially; anything else formats as "short". `suffix:` and `prefix:` units take any text. */
 export const UNIT_CHOICES: { label: string; value: string }[] = [
   { label: 'Short', value: 'short' },
   { label: 'None', value: 'none' },
@@ -401,7 +401,7 @@ function cleanOverrides(panel: Panel): { path: string; message: string }[] {
   return removed;
 }
 
-/** Grafana's field matchers that dashkit applies. Overrides with other matchers are kept but match nothing. */
+/** Grafana's field matchers that modelform applies. Overrides with other matchers are kept but match nothing. */
 export const OVERRIDE_MATCHERS: { label: string; value: string; help: string }[] = [
   { label: 'Fields with name', value: 'byName', help: 'The series or column name, before any display name.' },
   { label: 'Fields matching regex', value: 'byRegexp', help: 'Tested against the display name.' },

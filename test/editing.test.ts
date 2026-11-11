@@ -129,7 +129,7 @@ describe('HttpConfigFiles', () => {
       files: { 'app.json': { revision: 2, text: manifest({ daily: 'forms/daily.json' }) }, 'forms/daily.json': { revision: 4, text: form } },
     };
     const responses: Response[] = [
-      new Response(JSON.stringify(bundle), { status: 200, headers: { 'Content-Type': 'application/vnd.spaghetti.bundle+json' } }),
+      new Response(JSON.stringify(bundle), { status: 200, headers: { 'Content-Type': 'application/vnd.modelform.bundle+json' } }),
       new Response(JSON.stringify({ revision: 6, files: { 'app.json': 3, 'forms/new.json': 1 } }), { status: 200 }),
       new Response(JSON.stringify({ error: 'stale', conflicts: { 'forms/daily.json': 9 } }), { status: 412 }),
     ];
@@ -142,7 +142,7 @@ describe('HttpConfigFiles', () => {
       expect(files.atomic).toBe(false);
       expect(await readConfigFiles(files)).toEqual({ 'app.json': bundle.files['app.json'].text, 'forms/daily.json': form });
       expect(files.atomic).toBe(true);
-      expect((calls[0].init.headers as Record<string, string>).Accept).toContain('application/vnd.spaghetti.bundle+json');
+      expect((calls[0].init.headers as Record<string, string>).Accept).toContain('application/vnd.modelform.bundle+json');
 
       await files.commit({ 'app.json': '{}', 'forms/new.json': '{}' });
       expect(calls[1].url).toBe('https://api.test/v1/configs/c1/commit');

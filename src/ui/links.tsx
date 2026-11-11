@@ -7,10 +7,10 @@ import { useDashTheme } from './theme';
 /** Without an `onLink` handler, hand the URL to the OS. Relative URLs have nowhere to go, so they're skipped. */
 export function openLinkDefault(link: ResolvedLink) {
   if (!/^[a-z][a-z0-9+.-]*:/i.test(link.href)) {
-    console.warn(`dashkit: can't open relative link "${link.href}" without an onLink handler`);
+    console.warn(`modelform: can't open relative link "${link.href}" without an onLink handler`);
     return;
   }
-  Linking.openURL(link.href).catch((e) => console.warn(`dashkit: couldn't open ${link.href}: ${e}`));
+  Linking.openURL(link.href).catch((e) => console.warn(`modelform: couldn't open ${link.href}: ${e}`));
 }
 
 /**

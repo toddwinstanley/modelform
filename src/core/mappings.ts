@@ -12,7 +12,7 @@ export type MappingRow =
   | { type: 'range'; from: number | null; to: number | null; result: MappingResult }
   | { type: 'regex'; pattern: string; result: MappingResult }
   | { type: 'special'; match: SpecialMatch; result: MappingResult }
-  /** A mapping type dashkit doesn't render, kept as it is. */
+  /** A mapping type modelform doesn't render, kept as it is. */
   | { type: 'other'; mapping: ValueMapping };
 
 export const MAPPING_TYPES: { label: string; value: Exclude<MappingRow['type'], 'other'> }[] = [

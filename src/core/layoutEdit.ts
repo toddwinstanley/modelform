@@ -1,5 +1,5 @@
 /**
- * The layout editor's model. dashkit lays panels out in reading order, packed into lines by
+ * The layout editor's model. modelform lays panels out in reading order, packed into lines by
  * width (see layout.ts), so editing a layout is editing an order plus sizes: moving a panel
  * changes where it falls in the order, and every gridPos x/y is then rewritten from that
  * order so the file (and Grafana) agree with what the app shows.

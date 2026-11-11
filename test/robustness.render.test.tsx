@@ -35,15 +35,15 @@ const SIZES = [
   { width: 120, height: 60 },
 ];
 
-const ROOT = path.resolve(__dirname, '../../..');
+const ROOT = path.resolve(__dirname, 'fixtures');
 const FIXTURES = [
-  'apps/studio/config/dashboards/trends.json',
-  'apps/studio/config/dashboards/workouts.json',
-  'apps/studio/config/forms/daily.json',
-  'apps/studio/config/forms/workout.json',
-  'apps/tracker/dashboards/insights.json',
-  'apps/tracker/dashboards/setup.json',
-  'apps/tracker/dashboards/track-day.json',
+  'config/dashboards/trends.json',
+  'config/dashboards/workouts.json',
+  'config/forms/daily.json',
+  'config/forms/workout.json',
+  'tracker/insights.json',
+  'tracker/setup.json',
+  'tracker/track-day.json',
 ];
 
 const MAPPINGS = [
@@ -58,7 +58,7 @@ const OVERRIDES = [
   { matcher: { id: 'byRegexp', options: 'w.*' }, properties: [{ id: 'displayName', value: 'W' }, { id: 'custom.lineWidth', value: 4 }] },
 ];
 
-/** Every panel in the repo's dashboards and forms (rows' children too), and a template of each type. */
+/** Every panel in the fixture dashboards and forms (rows' children too), and a template of each type. */
 function seedPanels(): Panel[] {
   const out: Panel[] = [];
   for (const file of FIXTURES) {
@@ -241,7 +241,7 @@ describe('any panel the validator accepts renders', () => {
         continue;
       }
       // PanelCard's boundary catches render errors; it reports each with console.warn.
-      const caught = warn.mock.calls.find((c) => String(c[0]).includes('[dashkit] render failed'));
+      const caught = warn.mock.calls.find((c) => String(c[0]).includes('[modelform] render failed'));
       if (caught) fail(caught[1]);
     }
 

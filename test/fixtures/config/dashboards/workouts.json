@@ -1,0 +1,29 @@
+{
+  "uid": "studio-workouts",
+  "title": "Workouts",
+  "time": { "from": "now-90d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "piechart", "title": "By activity",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "activity", "groupBy": "text", "aggregate": "count", "bucket": "1d", "fillZero": false }],
+      "options": { "reduceOptions": { "calcs": ["sum"] } }
+    },
+    {
+      "id": 2, "type": "barchart", "title": "Minutes per day",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "workout-minutes", "alias": "Minutes", "aggregate": "sum", "bucket": "1d", "fillZero": false }],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "Time" } }],
+      "fieldConfig": { "defaults": { "unit": "suffix: min", "decimals": 0, "min": 0 } }
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Effort",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 7 },
+      "datasource": { "type": "modelform-local" },
+      "targets": [{ "refId": "A", "metric": "effort", "alias": "Effort", "aggregate": "avg", "bucket": "1d", "fillZero": false }],
+      "fieldConfig": { "defaults": { "min": 1, "max": 5, "custom": { "showPoints": "always" } } }
+    }
+  ]
+}

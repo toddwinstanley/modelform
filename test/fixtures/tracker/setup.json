@@ -1,0 +1,158 @@
+{
+  "uid": "tracker-setup",
+  "title": "Setup",
+  "description": "Input form. Each input-* panel records to the metric in options.metric.",
+  "panels": [
+    { "id": 1, "type": "row", "title": "At the track", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "id": 27, "type": "input-select", "title": "Wheels",
+      "gridPos": { "x": 0, "y": 1, "w": 24, "h": 3 },
+      "options": { "metric": "wheels", "choicesFrom": "wheel-sets", "default": "last", "placeholder": "Add wheels in the Garage tab" }
+    },
+    {
+      "id": 2, "type": "input-number", "title": "Sway FL",
+      "gridPos": { "x": 0, "y": 4, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "sway-fl", "step": 1, "min": 0, "max": 9, "default": "last" }
+    },
+    {
+      "id": 3, "type": "input-number", "title": "Sway FR",
+      "gridPos": { "x": 6, "y": 4, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "sway-fr", "step": 1, "min": 0, "max": 9, "default": "last" }
+    },
+    {
+      "id": 4, "type": "input-number", "title": "Sway RL",
+      "gridPos": { "x": 12, "y": 4, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "sway-rl", "step": 1, "min": 0, "max": 9, "default": "last" }
+    },
+    {
+      "id": 5, "type": "input-number", "title": "Sway RR",
+      "gridPos": { "x": 18, "y": 4, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "sway-rr", "step": 1, "min": 0, "max": 9, "default": "last" }
+    },
+    {
+      "id": 6, "type": "input-number", "title": "Rebound FL",
+      "gridPos": { "x": 0, "y": 7, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "rebound-fl", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 7, "type": "input-number", "title": "Rebound FR",
+      "gridPos": { "x": 6, "y": 7, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "rebound-fr", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 8, "type": "input-number", "title": "Rebound RL",
+      "gridPos": { "x": 12, "y": 7, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "rebound-rl", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 9, "type": "input-number", "title": "Rebound RR",
+      "gridPos": { "x": 18, "y": 7, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "rebound-rr", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 10, "type": "input-number", "title": "Compression FL",
+      "gridPos": { "x": 0, "y": 10, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "compression-fl", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 11, "type": "input-number", "title": "Compression FR",
+      "gridPos": { "x": 6, "y": 10, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "compression-fr", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 12, "type": "input-number", "title": "Compression RL",
+      "gridPos": { "x": 12, "y": 10, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "compression-rl", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    {
+      "id": 13, "type": "input-number", "title": "Compression RR",
+      "gridPos": { "x": 18, "y": 10, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "compression-rr", "unit": "clicks", "step": 1, "min": 0, "max": 99, "default": "last" }
+    },
+    { "id": 14, "type": "row", "title": "In the garage", "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 } },
+    {
+      "id": 15, "type": "input-number", "title": "Spring front (kg/mm)",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "spring-front", "unit": "kg/mm", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 16, "type": "input-number", "title": "Spring rear (kg/mm)",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "spring-rear", "unit": "kg/mm", "step": 0.5, "min": 0, "default": "last" }
+    },
+    {
+      "id": 17, "type": "input-number", "title": "Camber FL (°)",
+      "gridPos": { "x": 0, "y": 17, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "camber-fl", "unit": "°", "step": 0.1, "default": "last" }
+    },
+    {
+      "id": 18, "type": "input-number", "title": "Camber FR (°)",
+      "gridPos": { "x": 6, "y": 17, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "camber-fr", "unit": "°", "step": 0.1, "default": "last" }
+    },
+    {
+      "id": 19, "type": "input-number", "title": "Camber RL (°)",
+      "gridPos": { "x": 12, "y": 17, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "camber-rl", "unit": "°", "step": 0.1, "default": "last" }
+    },
+    {
+      "id": 20, "type": "input-number", "title": "Camber RR (°)",
+      "gridPos": { "x": 18, "y": 17, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "camber-rr", "unit": "°", "step": 0.1, "default": "last" }
+    },
+    {
+      "id": 21, "type": "input-number", "title": "Toe FL (°)",
+      "gridPos": { "x": 0, "y": 20, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "toe-fl", "unit": "°", "step": 0.01, "default": "last" }
+    },
+    {
+      "id": 22, "type": "input-number", "title": "Toe FR (°)",
+      "gridPos": { "x": 6, "y": 20, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "toe-fr", "unit": "°", "step": 0.01, "default": "last" }
+    },
+    {
+      "id": 23, "type": "input-number", "title": "Toe RL (°)",
+      "gridPos": { "x": 12, "y": 20, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "toe-rl", "unit": "°", "step": 0.01, "default": "last" }
+    },
+    {
+      "id": 24, "type": "input-number", "title": "Toe RR (°)",
+      "gridPos": { "x": 18, "y": 20, "w": 6, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "toe-rr", "unit": "°", "step": 0.01, "default": "last" }
+    },
+    {
+      "id": 25, "type": "input-number", "title": "Caster FL (°)",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "caster-fl", "unit": "°", "step": 0.1, "default": "last" }
+    },
+    {
+      "id": 26, "type": "input-number", "title": "Caster FR (°)",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 3 },
+      "mobile": { "span": 12 },
+      "options": { "metric": "caster-fr", "unit": "°", "step": 0.1, "default": "last" }
+    }
+  ]
+}

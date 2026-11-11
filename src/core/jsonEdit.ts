@@ -20,7 +20,7 @@ export interface JsonEdit {
 /** Lines longer than this are broken up. */
 const MAX_LINE = 100;
 const FORMAT = { insertSpaces: true, tabSize: 2, eol: '\n' };
-const PLACEHOLDER = '\u0000dashkit-placeholder\u0000';
+const PLACEHOLDER = '\u0000modelform-placeholder\u0000';
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 

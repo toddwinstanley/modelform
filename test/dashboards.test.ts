@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { listDashboards, renderIndex, writeIndex } from '../tools/dashboards';
 
 function tempDir(files: string[]) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashkit-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'modelform-'));
   for (const f of files) fs.writeFileSync(path.join(dir, f), '{}');
   return dir;
 }
