@@ -1,0 +1,7 @@
+# Not a workspace: this file only holds pnpm settings.
+
+# unrs-resolver (via eslint-config-expo) and esbuild (via tsup) ship prebuilt binaries as platform
+# packages; their postinstalls are only download fallbacks.
+allowBuilds:
+  esbuild: false
+  unrs-resolver: false
