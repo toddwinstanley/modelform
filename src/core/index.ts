@@ -16,6 +16,7 @@ export * from './gazetteer';
 export * from './links';
 export * from './manifest';
 export * from './navigation';
+export * from './documents';
 export * from './configSchema';
 export * from './editing';
 export * from './jsonEdit';
