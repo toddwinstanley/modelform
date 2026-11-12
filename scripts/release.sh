@@ -16,7 +16,7 @@ fi
 # pnpm packs: it builds (prepack) and swaps in the dist entry points from publishConfig.
 # npm stages the tarball as is, with trusted publishing (OIDC) and provenance.
 pnpm pack
-npm stage publish "./modelform-react-native-$version.tgz"
+npm stage publish "./modelform-react-native-$version.tgz" --loglevel verbose
 
 git tag "$tag"
 git push origin "$tag"
