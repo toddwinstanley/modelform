@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { BUNDLE_ACCEPT, BUNDLE_TYPE, ConfigLoader, fetchBundle, prepareDashboard, resolveUrl, validateManifest, type CachedConfig, type ConfigBundle } from '../src/core';
+import {
+  BUNDLE_ACCEPT,
+  BUNDLE_TYPE,
+  ConfigLoader,
+  fetchBundle,
+  httpFetchJson,
+  prepareDashboard,
+  resolveUrl,
+  validateManifest,
+  type CachedConfig,
+  type ConfigBundle,
+} from '../src/core';
 
 const form = { title: 'Daily', panels: [{ type: 'input-number', title: 'Weight', gridPos: { x: 0, y: 0, w: 24, h: 3 }, options: { metric: 'weight' } }] };
 const charts = { title: 'Charts', panels: [{ type: 'timeseries', title: 'Weight', gridPos: { x: 0, y: 0, w: 24, h: 8 } }] };
@@ -218,18 +229,92 @@ describe('ConfigLoader', () => {
     expect(loader.state.issues[0]).toMatchObject({ path: 'app.json: tabs', message: 'must not be empty' });
   });
 
+  const cachedBundle = (title = 'Cached'): ConfigBundle => ({
+    manifest: { ...manifest, title, documents: { daily: 'forms/daily.json', charts: '../shared/charts.json' } } as ConfigBundle['manifest'],
+    documents: { daily: structuredClone(form), charts: structuredClone(charts) } as ConfigBundle['documents'],
+  });
+  const offline = async () => {
+    throw new Error('offline');
+  };
+
   it('starts from a cached copy of the same URL only', async () => {
-    const cached = { url: BASE, fetchedAt: 1, bundle: { ...fallback, manifest: { ...fallback.manifest, title: 'Cached' } } };
-    const offline = async () => {
-      throw new Error('offline');
-    };
+    const cached = { url: BASE, fetchedAt: 1, bundle: cachedBundle() };
     const same = new ConfigLoader({ url: BASE, cache: memoryCache(cached), fallback, fetchJson: offline });
     await same.start();
-    expect(same.state).toMatchObject({ source: 'cache', fetchedAt: 1, error: '1 error', issues: [{ path: 'app.json', message: 'offline' }] });
+    expect(same.state).toMatchObject({ source: 'cache', fetchedAt: 1, error: 'offline', unreachable: true, issues: [{ path: 'app.json', message: 'offline' }] });
     expect(same.state.bundle?.manifest.title).toBe('Cached');
     const other = new ConfigLoader({ url: 'http://elsewhere/app.json', cache: memoryCache(cached), fallback, fetchJson: offline });
     await other.start();
     expect(other.state.bundle?.manifest.title).toBe('Bundled');
+  });
+
+  it('ignores a cached copy that no longer checks out', async () => {
+    const broken = cachedBundle();
+    delete (broken.documents as Record<string, unknown>).charts;
+    const loader = new ConfigLoader({ url: BASE, cache: memoryCache({ url: BASE, fetchedAt: 1, bundle: broken }), fallback, fetchJson: offline });
+    await loader.start();
+    expect(loader.state.source).toBe('bundled');
+    expect(loader.state.bundle?.manifest.title).toBe('Bundled');
+  });
+
+  it('tells a config with errors apart from one it couldn’t fetch', async () => {
+    const bad = new ConfigLoader({ url: BASE, fetchJson: server({ ...files, [BASE]: { ...manifest, tabs: [] } }) });
+    await bad.start();
+    expect(bad.state).toMatchObject({ error: '1 error', unreachable: false });
+    const notJson = new ConfigLoader({
+      url: BASE,
+      fetchJson: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    });
+    await notJson.start();
+    expect(notJson.state).toMatchObject({ error: '1 error', unreachable: false });
+    const down = new ConfigLoader({ url: BASE, fetchJson: server({}) });
+    await down.start();
+    expect(down.state).toMatchObject({ error: `${BASE}: HTTP 404`, unreachable: true });
+  });
+
+  it('gives up on a fetch that never answers, and fetches again next time', async () => {
+    let hang = true;
+    const seen: (AbortSignal | undefined)[] = [];
+    const fetchJson = (url: string, options?: { signal?: AbortSignal }) => {
+      seen.push(options?.signal);
+      return hang ? new Promise<never>(() => {}) : server(files)(url);
+    };
+    const loader = new ConfigLoader({ url: BASE, fetchJson, timeoutMs: 20 });
+    await loader.start();
+    expect(loader.state).toMatchObject({ loading: false, error: 'no answer in 0.02s', unreachable: true });
+    expect(seen[0]?.aborted).toBe(true);
+    hang = false;
+    await loader.refresh();
+    expect(loader.state).toMatchObject({ source: 'remote', error: undefined, unreachable: undefined });
+  });
+
+  it('changes nothing after dispose, even when a fetch in flight finishes', async () => {
+    let answer!: () => void;
+    const gate = new Promise<void>((resolve) => (answer = resolve));
+    const cache = memoryCache();
+    const loader = new ConfigLoader({ url: BASE, cache, fallback, fetchJson: async (url) => (await gate, server(files)(url)) });
+    const before = loader.state;
+    const started = loader.start();
+    await Promise.resolve();
+    loader.dispose();
+    answer();
+    await started;
+    expect(loader.state).toBe(before);
+    expect(cache.get()).toBeNull();
+    await loader.refresh();
+    expect(cache.get()).toBeNull();
+  });
+
+  it('only notifies when a failure changes', async () => {
+    const loader = new ConfigLoader({ url: BASE, fetchJson: offline });
+    let calls = 0;
+    loader.subscribe(() => calls++);
+    await loader.start();
+    const after = calls;
+    await loader.refresh();
+    expect(calls).toBe(after);
   });
 
   it('only notifies when something changed', async () => {
@@ -243,6 +328,57 @@ describe('ConfigLoader', () => {
     await loader.refresh();
     expect(calls).toBe(after);
     expect(loader.state).toBe(snapshot);
+  });
+});
+
+describe('httpFetchJson', () => {
+  /** Stands in for fetch: answers from `etag`/`body`, with 304 when If-None-Match matches; records each request's headers. */
+  const stubFetch = (state: { etag?: string; body: unknown; refuseConditional?: boolean }) => {
+    const sent: Record<string, string>[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: { headers: Record<string, string> }) => {
+      sent.push(init.headers);
+      const condition = init.headers['If-None-Match'];
+      if (condition && state.refuseConditional) throw new TypeError('Failed to fetch');
+      if (condition && condition === state.etag) return new Response(null, { status: 304 });
+      return new Response(JSON.stringify(state.body), { status: 200, headers: state.etag ? { ETag: state.etag } : {} });
+    });
+    return sent;
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends back the ETag it was given, and answers a 304 from memory', async () => {
+    const state = { etag: '"c1"', body: { title: 'One' } };
+    const sent = stubFetch(state);
+    const fetchJson = httpFetchJson();
+    expect(await fetchJson(BASE)).toEqual({ title: 'One' });
+    expect(await fetchJson(BASE)).toEqual({ title: 'One' });
+    expect(sent[1]['If-None-Match']).toBe('"c1"');
+    Object.assign(state, { etag: '"c2"', body: { title: 'Two' } });
+    expect(await fetchJson(BASE)).toEqual({ title: 'Two' });
+  });
+
+  it('keeps copies apart by Accept and by headers like Authorization', async () => {
+    const sent = stubFetch({ etag: '"c1"', body: {} });
+    let token = 'a';
+    const fetchJson = httpFetchJson({ headers: () => ({ Authorization: token }) });
+    await fetchJson(BASE);
+    await fetchJson(BASE, { accept: BUNDLE_ACCEPT });
+    token = 'b';
+    await fetchJson(BASE);
+    expect(sent.map((h) => h['If-None-Match'])).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('asks again without If-None-Match where the host refuses it, and stops sending it', async () => {
+    const sent = stubFetch({ etag: '"c1"', body: { title: 'One' }, refuseConditional: true });
+    const fetchJson = httpFetchJson();
+    await fetchJson(BASE);
+    expect(await fetchJson(BASE)).toEqual({ title: 'One' });
+    expect(sent.map((h) => h['If-None-Match'])).toEqual([undefined, '"c1"', undefined]);
+  });
+
+  it('words failed responses with httpError', async () => {
+    vi.stubGlobal('fetch', async () => new Response('', { status: 401 }));
+    await expect(httpFetchJson({ httpError: (s) => `status ${s}` })(BASE)).rejects.toThrow('status 401');
   });
 });
 
