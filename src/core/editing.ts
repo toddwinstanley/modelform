@@ -8,7 +8,7 @@ import { isInputType } from './inputs';
 import { applyJsonEdits } from './jsonEdit';
 import { LOCAL_DATASOURCE_TYPE } from './local';
 import type { Panel } from './schema';
-import { assembleBundle, BUNDLE_ACCEPT, bundleRoot, isBundleResponse, resolveUrl, type ConfigIssue, type FetchJson, type LoadResult } from './manifest';
+import { assembleBundle, BUNDLE_ACCEPT, bundleRoot, httpFetchJson, isBundleResponse, resolveUrl, type ConfigIssue, type FetchJson, type LoadResult } from './manifest';
 
 export interface Located {
   /** Character offset and length of the text the issue is about. */
@@ -403,11 +403,7 @@ export class HttpConfigFiles implements ConfigFiles {
 
 /** A FetchJson that sends a bearer token, for loading configs from the API. */
 export function fetchJsonWithToken(token: TokenSource): FetchJson {
-  return async (url, options) => {
-    const res = await fetch(url, { headers: { Accept: options?.accept ?? 'application/json', ...(await authHeaders(token)) }, cache: 'no-store' });
-    if (!res.ok) throw new Error(res.status === 401 ? 'not signed in' : `HTTP ${res.status}`);
-    return JSON.parse(await res.text());
-  };
+  return httpFetchJson({ headers: () => authHeaders(token), httpError: (status) => (status === 401 ? 'not signed in' : `HTTP ${status}`) });
 }
 
 /** Reads the manifest and every document it gives a path for. Files that can't be read are left out (checkFiles then reports them). */

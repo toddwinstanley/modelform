@@ -249,15 +249,49 @@ export function resolveUrl(base: string, rel: string): string {
   return origin + out.join('/');
 }
 
-/** `accept` replaces the default Accept header, e.g. to ask for a bundle. */
-export type FetchJson = (url: string, options?: { accept?: string }) => Promise<unknown>;
+/** `accept` replaces the default Accept header, e.g. to ask for a bundle. `signal` cancels the request. */
+export type FetchJson = (url: string, options?: { accept?: string; signal?: AbortSignal }) => Promise<unknown>;
 
-export const defaultFetchJson: FetchJson = async (url, options) => {
-  const res = await fetch(url, { headers: { Accept: options?.accept ?? 'application/json' }, cache: 'no-store' });
-  // Callers prefix errors with the file's path, so these don't repeat the URL.
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return JSON.parse(await res.text());
-};
+export interface HttpFetchJsonOptions {
+  /** Extra request headers, e.g. Authorization. */
+  headers?: () => Promise<Record<string, string>> | Record<string, string>;
+  /** The error message for a failed response. Defaults to `HTTP <status>`. */
+  httpError?: (status: number) => string;
+}
+
+/**
+ * A FetchJson over fetch(). It remembers each response's ETag and sends it back as
+ * If-None-Match, so a file that hasn't changed comes back as a 304 and is answered from
+ * memory. On the web that only happens where the server exposes ETag to scripts.
+ */
+export function httpFetchJson(options: HttpFetchJsonOptions = {}): FetchJson {
+  const seen = new Map<string, { etag: string; json: unknown }>();
+  return async (url, { accept = 'application/json', signal } = {}) => {
+    const extra = (await options.headers?.()) ?? {};
+    // Keyed by the headers too, so one user's copy is never the answer to another's request.
+    const key = JSON.stringify([url, accept, extra]);
+    const last = seen.get(key);
+    const get = (etag?: string) =>
+      fetch(url, { headers: { Accept: accept, ...extra, ...(etag && { 'If-None-Match': etag }) }, cache: 'no-store', signal });
+    // A host that sends ETags but won't take If-None-Match across origins fails the conditional
+    // request outright on the web; ask again without it, and stop sending it.
+    const res = await get(last?.etag).catch((e) => {
+      if (!last || signal?.aborted) throw e;
+      seen.delete(key);
+      return get();
+    });
+    if (res.status === 304 && last) return last.json;
+    // Callers prefix errors with the file's path, so these don't repeat the URL.
+    if (!res.ok) throw new Error(options.httpError?.(res.status) ?? `HTTP ${res.status}`);
+    const json = JSON.parse(await res.text());
+    const etag = res.headers.get('ETag');
+    if (etag) seen.set(key, { etag, json });
+    else seen.delete(key);
+    return json;
+  };
+}
+
+export const defaultFetchJson: FetchJson = httpFetchJson();
 
 export interface LoadResult {
   /** Present when there are no errors. */
@@ -265,6 +299,8 @@ export interface LoadResult {
   issues: ConfigIssue[];
   /** The config's revision, when the server sent it as one bundle. */
   revision?: string;
+  /** True when the manifest couldn't be fetched at all (no network, an HTTP error, a timeout), as opposed to a config with errors. */
+  unreachable?: boolean;
 }
 
 const fileName = (url: string) => url.replace(/[?#].*$/, '').split('/').pop() || url;
@@ -303,7 +339,12 @@ const NOT_IN_BUNDLE = 'not found in the config';
  * Builds a bundle from a server's bundle response. Documents inside the config come from the
  * response; one elsewhere (an absolute URL) is still fetched.
  */
-export async function assembleFromResponse(url: string, response: BundleResponse, fetchJson: FetchJson = defaultFetchJson): Promise<LoadResult> {
+export async function assembleFromResponse(
+  url: string,
+  response: BundleResponse,
+  fetchJson: FetchJson = defaultFetchJson,
+  signal?: AbortSignal,
+): Promise<LoadResult> {
   const root = bundleRoot(url, response.manifest);
   const file = fileName(url);
   const parse = (path: string) => {
@@ -321,7 +362,7 @@ export async function assembleFromResponse(url: string, response: BundleResponse
     manifest,
     async (ref) => {
       const abs = resolveUrl(url, ref).replace(/[?#].*$/, '');
-      return abs.startsWith(root) ? parse(abs.slice(root.length)) : fetchJson(resolveUrl(url, ref));
+      return abs.startsWith(root) ? parse(abs.slice(root.length)) : fetchJson(resolveUrl(url, ref), { signal });
     },
     file,
   );
@@ -359,15 +400,38 @@ export async function assembleBundle(manifest: unknown, load: (path: string) => 
  * Fetches a config: in one response from a server that bundles (all of it from the same
  * moment), or else the manifest and then each document it points to, resolved against its URL.
  */
-export async function fetchBundle(url: string, fetchJson: FetchJson = defaultFetchJson): Promise<LoadResult> {
+export async function fetchBundle(url: string, fetchJson: FetchJson = defaultFetchJson, signal?: AbortSignal): Promise<LoadResult> {
   let manifest: unknown;
   try {
-    manifest = await fetchJson(url, { accept: BUNDLE_ACCEPT });
+    manifest = await fetchJson(url, { accept: BUNDLE_ACCEPT, signal });
   } catch (e) {
-    return { issues: [{ severity: 'error', path: fileName(url), message: (e as Error).message }] };
+    // A manifest that arrived but isn't JSON is the config's problem, not the connection's.
+    return { issues: [{ severity: 'error', path: fileName(url), message: (e as Error).message }], ...(!(e instanceof SyntaxError) && { unreachable: true }) };
   }
-  if (isBundleResponse(manifest)) return assembleFromResponse(url, manifest, fetchJson);
-  return assembleBundle(manifest, (path) => fetchJson(resolveUrl(url, path)), fileName(url));
+  if (isBundleResponse(manifest)) return assembleFromResponse(url, manifest, fetchJson, signal);
+  return assembleBundle(manifest, (path) => fetchJson(resolveUrl(url, path), { signal }), fileName(url));
+}
+
+/**
+ * Checks a bundle that was assembled earlier (a cached copy, say) as if it had just been
+ * fetched, since the checks may have changed since. Returns it readied for rendering, or
+ * nothing if it no longer loads.
+ */
+export function revalidateBundle(bundle: ConfigBundle): ConfigBundle | undefined {
+  try {
+    const { manifest } = bundle;
+    if (validateManifest(manifest).length) return undefined;
+    const documents: Record<string, Dashboard> = {};
+    for (const id of Object.keys(manifest.documents)) {
+      const { dashboard } = prepareDashboard(bundle.documents[id], id);
+      if (!dashboard) return undefined;
+      documents[id] = dashboard;
+    }
+    const checked = { manifest, documents };
+    return validateBundle(checked).some((i) => i.severity === 'error') ? undefined : checked;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Where the last good config is kept between launches. */
@@ -392,8 +456,14 @@ export interface ConfigState {
   /** The shown config's revision, when the server gives one. */
   revision?: string;
   loading: boolean;
-  /** A summary ("2 errors") when the last fetch failed; the bundle shown is then the last good one. See `issues`. */
+  /**
+   * Set when the last fetch failed; the bundle shown is then the last good one. See `issues`.
+   * A summary ("2 errors") for a config with errors, or why the server couldn't be reached
+   * ("HTTP 503", "no answer in 15s") when `unreachable`.
+   */
   error?: string;
+  /** True when the last fetch failed because the config couldn't be fetched at all, not because it has errors. */
+  unreachable?: boolean;
   /** From the last fetch, good or bad. */
   issues: ConfigIssue[];
 }
@@ -405,18 +475,25 @@ export interface ConfigLoaderOptions {
   /** Shown until something better loads, e.g. a config bundled with the app. */
   fallback?: ConfigBundle;
   fetchJson?: FetchJson;
+  /** How long a fetch may take before it's abandoned. Defaults to 15 seconds. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
  * Keeps the app's config current. Shows the bundled fallback, then the cached copy,
  * then each newer fetch that validates. A bad fetch never replaces a good config: it's
- * reported in `error`/`issues` and the last good bundle stays.
+ * reported in `error`/`issues` and the last good bundle stays. Call `dispose` when done
+ * with a loader, so a fetch still in flight can't write the cache afterwards.
  */
 export class ConfigLoader {
   private listeners = new Set<() => void>();
   private snapshot: ConfigState;
   private lastJson?: string;
   private inflight?: Promise<void>;
+  private controller?: AbortController;
+  private disposed = false;
 
   constructor(private options: ConfigLoaderOptions) {
     const { fallback, url } = options;
@@ -437,28 +514,47 @@ export class ConfigLoader {
 
   getSnapshot = () => this.snapshot;
 
-  /** Loads the cached copy (if it was fetched from the same URL), then fetches. */
+  /** Loads the cached copy (if it was fetched from the same URL and still checks out), then fetches. */
   async start() {
     const { url, cache } = this.options;
     if (!url) return;
     const cached = await cache?.read().catch(() => null);
-    if (cached?.url === url && !this.snapshot.fetchedAt) {
-      this.lastJson = JSON.stringify(cached.bundle);
-      this.set({ bundle: cached.bundle, source: 'cache', fetchedAt: cached.fetchedAt, revision: cached.revision });
+    const bundle = cached?.url === url ? revalidateBundle(cached.bundle) : undefined;
+    if (cached && bundle && !this.snapshot.fetchedAt) {
+      this.lastJson = JSON.stringify(bundle);
+      this.set({ bundle, source: 'cache', fetchedAt: cached.fetchedAt, revision: cached.revision });
     }
     await this.refresh();
   }
 
   /** Fetches now. Concurrent calls share one fetch. Only notifies listeners when something changed. */
   refresh(): Promise<void> {
-    const { url, cache, fetchJson } = this.options;
-    if (!url) return Promise.resolve();
+    const { url, cache, fetchJson, timeoutMs = DEFAULT_TIMEOUT_MS } = this.options;
+    if (!url || this.disposed) return Promise.resolve();
     this.inflight ??= (async () => {
+      const controller = new AbortController();
+      this.controller = controller;
+      // Raced as well as aborted, so a fetchJson that ignores the signal can't hang the loader either.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const abandoned = new Promise<LoadResult>((resolve) => {
+        const fail = (message: string) => resolve({ issues: [{ severity: 'error', path: fileName(url), message }], unreachable: true });
+        timer = setTimeout(() => {
+          fail(`no answer in ${timeoutMs / 1000}s`);
+          controller.abort();
+        }, timeoutMs);
+        controller.signal.addEventListener('abort', () => fail('cancelled'));
+      });
       try {
-        const { bundle, issues, revision } = await fetchBundle(url, fetchJson);
+        const result = await Promise.race([fetchBundle(url, fetchJson, controller.signal), abandoned]);
+        if (this.disposed) return;
+        const { bundle, issues, revision, unreachable } = result;
         if (!bundle) {
           const errors = issues.filter((i) => i.severity === 'error').length;
-          return this.set({ loading: false, error: errors === 1 ? '1 error' : `${errors} errors`, issues });
+          const error = unreachable ? issues[0]?.message : errors === 1 ? '1 error' : `${errors} errors`;
+          return this.set(
+            { loading: false, error, unreachable: !!unreachable, issues },
+            this.snapshot.loading || error !== this.snapshot.error || !!unreachable !== !!this.snapshot.unreachable || !sameIssues(issues, this.snapshot.issues),
+          );
         }
         const json = JSON.stringify(bundle);
         const changed = json !== this.lastJson;
@@ -466,7 +562,7 @@ export class ConfigLoader {
         const fetchedAt = Date.now();
         if (changed || revision !== this.snapshot.revision) cache?.write({ url, fetchedAt, bundle, revision }).catch(() => {});
         this.set(
-          { ...(changed && { bundle }), source: 'remote', fetchedAt, revision, loading: false, error: undefined, issues },
+          { ...(changed && { bundle }), source: 'remote', fetchedAt, revision, loading: false, error: undefined, unreachable: undefined, issues },
           changed ||
             revision !== this.snapshot.revision ||
             this.snapshot.source !== 'remote' ||
@@ -475,15 +571,24 @@ export class ConfigLoader {
             !sameIssues(issues, this.snapshot.issues),
         );
       } finally {
+        clearTimeout(timer);
+        if (this.controller === controller) this.controller = undefined;
         this.inflight = undefined;
       }
     })();
     return this.inflight;
   }
 
+  /** Stops the loader: cancels a fetch in flight, and nothing it does afterwards changes the state or the cache. */
+  dispose() {
+    this.disposed = true;
+    this.controller?.abort();
+    this.listeners.clear();
+  }
+
   /** `notify: false` drops the patch, so the snapshot only changes when listeners hear about it. */
   private set(patch: Partial<ConfigState>, notify = true) {
-    if (!notify) return;
+    if (!notify || this.disposed) return;
     this.snapshot = { ...this.snapshot, ...patch };
     this.listeners.forEach((l) => l());
   }
