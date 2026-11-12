@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFrames,
+  compactGrid,
   formatClock,
   formatValue,
   GrafanaClient,
@@ -50,6 +51,56 @@ describe('layout', () => {
     const d: Dashboard = { title: 't', panels: [panel('a', 0, 0, 8), panel('b', 8, 0, 16), panel('c', 0, 4, 12)] };
     const [section] = layoutDashboard(d, 'grid');
     expect(section.rows.map((r) => r.cells.map((c) => c.span))).toEqual([[8, 16], [12]]);
+  });
+
+  it('places panels on the grid where Grafana does, floating them up', () => {
+    // A tall panel on the left with two short ones stacked beside it, and one under a gap.
+    const d: Dashboard = { title: 't', panels: [panel('tall', 0, 0, 12, 8), panel('top', 12, 0, 12, 4), panel('under', 12, 4, 12, 4), panel('low', 12, 20, 12, 2)] };
+    const [section] = layoutDashboard(d, 'grid');
+    expect(section.grid.cells.map((c) => [c.panel.type, c.x, c.y, c.w, c.h])).toEqual([
+      ['tall', 0, 0, 12, 8],
+      ['top', 12, 0, 12, 4],
+      ['under', 12, 4, 12, 4],
+      ['low', 12, 8, 12, 2],
+    ]);
+    expect(section.grid.h).toBe(10);
+  });
+
+  it('places a section’s panels from the top of the section', () => {
+    const d: Dashboard = { title: 't', panels: [panel('stat', 0, 0, 24), panel('row', 0, 4, 24, 1, { id: 1 }), panel('a', 6, 5, 6), panel('b', 0, 9, 24)] };
+    const [, section] = layoutDashboard(d, 'grid');
+    expect(section.grid.cells.map((c) => [c.panel.type, c.x, c.y])).toEqual([
+      ['a', 6, 0],
+      ['b', 0, 4],
+    ]);
+  });
+});
+
+describe('compactGrid', () => {
+  it('drops a box that overlaps one already placed below it', () => {
+    expect(compactGrid([{ x: 0, y: 0, w: 12, h: 4 }, { x: 6, y: 2, w: 12, h: 4 }])).toEqual([
+      { x: 0, y: 0, w: 12, h: 4 },
+      { x: 6, y: 4, w: 12, h: 4 },
+    ]);
+  });
+
+  it('places fixed boxes first, so the rest make way', () => {
+    const boxes = [{ x: 0, y: 0, w: 24, h: 4 }, { x: 0, y: 2, w: 12, h: 2 }];
+    expect(compactGrid(boxes, new Set([1]))).toEqual([
+      { x: 0, y: 4, w: 24, h: 4 },
+      { x: 0, y: 2, w: 12, h: 2 },
+    ]);
+  });
+
+  it('snaps fractional columns so repeated panels tile without overlapping', () => {
+    const fifths = [0, 1, 2, 3, 4].map((i) => ({ x: i * 4.8, y: 0, w: 4.8, h: 3 }));
+    const out = compactGrid(fifths);
+    expect(out.map((b) => b.y)).toEqual([0, 0, 0, 0, 0]);
+    expect(out.map((b) => [b.x, b.w])).toEqual([[0, 5], [5, 5], [10, 4], [14, 5], [19, 5]]);
+  });
+
+  it('keeps boxes on the grid', () => {
+    expect(compactGrid([{ x: 20, y: 3, w: 12, h: 0 }])).toEqual([{ x: 12, y: 0, w: 12, h: 1 }]);
   });
 
   it('groups expanded and collapsed rows', () => {

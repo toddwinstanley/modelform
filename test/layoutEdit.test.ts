@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyJsonEdits,
+  collapseRow,
   diffJson,
+  gridOffsetPx,
   dropTarget,
   duplicatePanel,
   expandRow,
@@ -10,11 +12,14 @@ import {
   layoutDashboard,
   movePanel,
   panelEdits,
+  placePanel,
   readingOrder,
   removePanel,
   repack,
   resizePanel,
   setHiddenOnPhones,
+  settleLayout,
+  snapToGrid,
   stringifyCompact,
   type Panel,
 } from '../src/core';
@@ -106,17 +111,48 @@ describe('layout ops', () => {
     expect(repack(panels, readingOrder(panels))).toEqual(panels);
   });
 
-  it('moves panels before another, or to the end, across rows', () => {
-    expect(ids(movePanel(panels, 0, 5))).toEqual([2, 10, 3, 4, 1, 5]);
-    expect(ids(movePanel(panels, 5, null))).toEqual([1, 2, 10, 3, 4, 5]);
+  it('moves panels before another in reading order, for phones, by taking its place', () => {
+    const before3 = movePanel(panels, 4, 3);
+    expect(before3[4].gridPos).toMatchObject({ x: 0, y: 5 });
+    // The grid decides the order: 4 lands right before 3, and 5, beside 4, floats up ahead of 3 too.
+    expect(ids(before3)).toEqual([1, 2, 10, 4, 5, 3]);
+    expect(ids(movePanel(panels, 0, null))).toEqual([2, 10, 3, 4, 5, 1]);
     expect(ids(movePanel(panels, 2, 0))).toEqual([10, 1, 2, 3, 4, 5]);
     expect(appLines(movePanel(panels, 2, 0))).toEqual([['row 10'], ['1', '2'], ['3', '4', '5']]);
+    expect(movePanel(panels, 3, 3)).toBe(panels);
+  });
+
+  it('places a panel anywhere on the grid, moving what’s in the way down', () => {
+    // A tall panel with a short one beside it, and one under the tall one.
+    const grid = [p(1, 0, 0, 12, 8), p(2, 12, 0, 12, 4), p(3, 0, 8, 12, 4)];
+    const stacked = placePanel(grid, 2, 12, 4);
+    expect(stacked.map((x) => x.gridPos)).toEqual([
+      { x: 0, y: 0, w: 12, h: 8 },
+      { x: 12, y: 0, w: 12, h: 4 },
+      { x: 12, y: 4, w: 12, h: 4 },
+    ]);
+    const onTop = placePanel(grid, 2, 12, 0);
+    expect(onTop[2].gridPos).toMatchObject({ x: 12, y: 0 });
+    expect(onTop[1].gridPos).toMatchObject({ x: 12, y: 4 });
+    // Dropped low with nothing above, it floats up; dropped past the right edge, it stays on the grid.
+    expect(placePanel(grid, 1, 30, 40)[1].gridPos).toMatchObject({ x: 12, y: 0 });
+  });
+
+  it('settles a layout the way the app shows it, leaving panels in place alone', () => {
+    const gappy = [p(1, 0, 0, 12, 2), p(2, 12, 0, 12, 6), p(3, 0, 6, 12, 4)];
+    const out = settleLayout(gappy);
+    expect(out[2].gridPos).toEqual({ x: 0, y: 2, w: 12, h: 4 }); // floats up beside the taller one
+    expect(out[0]).toBe(gappy[0]);
+    expect(settleLayout(panels)).toEqual(panels);
   });
 
   it('resizes on the grid or for phones', () => {
     const wider = resizePanel(panels, 3, 'grid', 16, 6);
     expect(wider[3].gridPos).toEqual({ x: 0, y: 5, w: 16, h: 6 });
-    expect(wider[5].gridPos).toEqual({ x: 0, y: 11, w: 8, h: 4 }); // 5 wraps to the next line
+    expect(wider[4].gridPos).toEqual({ x: 8, y: 11, w: 8, h: 4 }); // covered, so it moves down
+    expect(wider[5].gridPos).toEqual({ x: 16, y: 5, w: 8, h: 4 }); // not covered, so it stays
+    // Widened past the right edge, it moves left to stay on the grid.
+    expect(resizePanel(panels, 5, 'grid', 12, 4)[5].gridPos).toMatchObject({ x: 12, w: 12 });
     const phone = resizePanel(panels, 3, 'phone', 12, 3);
     expect(phone[3].mobile).toEqual({ span: 12, h: 3 });
     expect(phone[3].gridPos).toEqual(panels[3].gridPos);
@@ -143,6 +179,18 @@ describe('layout ops', () => {
     const out = expandRow(collapsed, 1);
     expect(out[1]).toMatchObject({ collapsed: false, panels: [] });
     expect(ids(out)).toEqual([1, 10, 3, 4, 11]);
+    expect(out[2].gridPos).toEqual({ x: 0, y: 9, w: 24, h: 1 }); // row 11 moves down to make room
+  });
+
+  it('collapses a row and expands it back', () => {
+    const open = [p(1, 0, 0, 24), row(10, 4), p(3, 0, 5, 12), p(4, 12, 5, 12, 6), row(11, 11), p(5, 0, 12, 24)];
+    const { panels: closed, removed } = collapseRow(open, 1);
+    expect(removed).toEqual([2, 3]);
+    expect(closed[1]).toMatchObject({ collapsed: true, panels: [open[2], open[3]] });
+    expect(ids(closed)).toEqual([1, 10, 11, 5]);
+    expect(closed.map((x) => x.gridPos.y)).toEqual([0, 4, 5, 6]); // what was below floats up
+    const reopened = expandRow(closed, 1);
+    expect(Object.fromEntries(reopened.map((x) => [x.id, x.gridPos]))).toEqual(Object.fromEntries(open.map((x) => [x.id, x.gridPos])));
   });
 
   it('turns ops into edits that reproduce them on the text', () => {
@@ -153,6 +201,8 @@ describe('layout ops', () => {
     expect(JSON.parse(applyJsonEdits(text, panelEdits(panels, removed, 2))).panels).toEqual(removed);
     const added = insertPanel(panels, { type: 'text', gridPos: { x: 0, y: 0, w: 6, h: 2 } }, null).panels;
     expect(JSON.parse(applyJsonEdits(text, panelEdits(panels, added))).panels).toEqual(added);
+    const collapsed = collapseRow(panels, 2);
+    expect(JSON.parse(applyJsonEdits(text, panelEdits(panels, collapsed.panels, collapsed.removed))).panels).toEqual(collapsed.panels);
   });
 });
 
@@ -163,13 +213,15 @@ describe('canvas', () => {
   it('lays out in pixels like the app, per mode', () => {
     // 24 columns of 40px including the 8px gap.
     const grid = layoutCanvas(panels, order, 'grid', 952);
+    // On the grid each unit of height is 38px (a 30px cell and the gap under it); a row is one unit.
     expect(grid.items.map((c) => [c.index, c.x, c.y, c.width, c.height])).toEqual([
       [0, 0, 0, 472, 144],
       [1, 480, 0, 472, 220],
-      [2, 0, 228, 952, 32],
-      [3, 0, 268, 232, 106],
-      [4, 240, 268, 232, 106],
+      [2, 0, 228, 952, 30],
+      [3, 0, 266, 232, 106],
+      [4, 240, 266, 232, 106],
     ]);
+    expect(grid.height).toBe(372);
     const phone = layoutCanvas(panels, order, 'phone', 952);
     expect(phone.hidden).toEqual([4]);
     // w <= 6 goes two-up on phones; alone on its line, it stretches to full width.
@@ -180,6 +232,18 @@ describe('canvas', () => {
     const c = layoutCanvas(panels, order, 'grid', 952, { index: 0, span: 24, h: 2 });
     expect(c.items[0]).toMatchObject({ width: 952, height: 68 });
     expect(c.items[1].y).toBe(76); // pushed to the next line
+  });
+
+  it('previews a panel being dragged on the grid, with the others making way', () => {
+    const c = layoutCanvas(panels, order, 'grid', 952, { index: 3, x: 12, y: 0 });
+    expect(c.items.find((i) => i.index === 3)).toMatchObject({ x: 480, y: 0 });
+    expect(c.items.find((i) => i.index === 1)).toMatchObject({ y: gridOffsetPx(3) }); // pushed under it
+  });
+
+  it('snaps a pixel position to a grid cell', () => {
+    expect(snapToGrid(952, 0, 0, 12)).toEqual({ x: 0, y: 0 });
+    expect(snapToGrid(952, 479, 80, 12)).toEqual({ x: 12, y: 2 });
+    expect(snapToGrid(952, 900, -50, 12)).toEqual({ x: 12, y: 0 });
   });
 
   it('finds where a dragged panel would land', () => {

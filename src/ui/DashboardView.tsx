@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isInputPanel } from '../core/inputs';
-import { gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode } from '../core/layout';
+import { gridOffsetPx, gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode, type LayoutSection } from '../core/layout';
 import { panelHasQueries } from '../core/datasource';
 import type { Panel } from '../core/schema';
 import { interpolate } from '../core/variables';
@@ -97,7 +97,11 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
                     </Text>
                   </Pressable>
                 )}
+                {!collapsed && layoutMode === 'grid' && (
+                  <GridSection grid={section.grid} width={contentW} maxPanelH={maxPanelH} deferred={!seen.has(section.key)} />
+                )}
                 {!collapsed &&
+                  layoutMode === 'phone' &&
                   section.rows.map((row, ri) => (
                     <View key={ri} style={styles.row}>
                       {row.cells.map((cell) => {
@@ -114,6 +118,26 @@ export function DashboardView({ mode = 'auto', header, footer, refreshable }: Da
         </ScrollView>
       )}
       {footer}
+    </View>
+  );
+}
+
+/**
+ * A section's panels where Grafana puts them. Rather than capping one panel to the viewport,
+ * which would leave it out of line with its neighbours, the whole grid is scaled down
+ * vertically until its tallest panel fits (landscape phones).
+ */
+function GridSection({ grid, width, maxPanelH, deferred }: { grid: LayoutSection['grid']; width: number; maxPanelH: number; deferred: boolean }) {
+  const colW = (width + GAP) / GRID_COLUMNS;
+  const tallest = Math.max(0, ...grid.cells.map((c) => gridUnitsToPx(c.h)));
+  const scale = tallest > maxPanelH ? maxPanelH / tallest : 1;
+  return (
+    <View style={{ height: gridUnitsToPx(grid.h) * scale }}>
+      {grid.cells.map((cell) => (
+        <View key={cell.key} style={[styles.gridCell, { left: cell.x * colW, top: gridOffsetPx(cell.y) * scale }]}>
+          <PanelCard panel={cell.panel} width={cell.w * colW - GAP} height={gridUnitsToPx(cell.h) * scale} deferred={deferred} />
+        </View>
+      ))}
     </View>
   );
 }
@@ -287,6 +311,7 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 14, width: 14 },
   rowTitle: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', gap: GAP },
+  gridCell: { position: 'absolute' },
   card: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8, overflow: 'hidden' },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, height: TITLE_H - 8, marginBottom: 8 },
   title: { flex: 1, fontSize: 13, fontWeight: '600' },

@@ -34,16 +34,80 @@ export interface LayoutRow {
   h: number;
 }
 
+/** A panel placed on Grafana's grid, relative to the top of its section. */
+export interface GridCell extends LayoutCell {
+  /** Column of the left edge, 0 to 23. */
+  x: number;
+  /** In grid units from the top of the section. */
+  y: number;
+  /** Columns wide; the same as `span`. */
+  w: number;
+  /** Height in grid units. */
+  h: number;
+}
+
 export interface LayoutSection {
   key: string;
   /** The Grafana "row" panel heading this section, if any. */
   row?: Panel;
   collapsed: boolean;
+  /** Panels packed into lines in reading order: how phones show the section. */
   rows: LayoutRow[];
+  /** Panels where Grafana puts them, floated up: how wide screens show the section. */
+  grid: { cells: GridCell[]; h: number };
 }
 
 /** Grafana's pixel height for h grid units. */
 export const gridUnitsToPx = (h: number) => h * CELL_HEIGHT + (h - 1) * CELL_MARGIN;
+
+/** How far down y grid units starts, in pixels: each unit is a cell plus the gap under it. */
+export const gridOffsetPx = (y: number) => y * (CELL_HEIGHT + CELL_MARGIN);
+
+/** A rectangle on Grafana's grid, in columns and height units. */
+export interface GridBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const overlaps = (a: GridBox, b: GridBox) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * Grafana's vertical compaction. Boxes are taken top to bottom, then left to right; each floats
+ * up as far as it can, and one that overlaps a box already placed drops below it. Boxes listed
+ * in `fixed` are placed first, where they are, so the rest make way for them. Columns are
+ * snapped to whole units and kept on the grid. Returns new boxes, in the same order.
+ */
+export function compactGrid(boxes: GridBox[], fixed: ReadonlySet<number> = new Set()): GridBox[] {
+  const snapped = boxes.map((b) => {
+    // Rounding both edges keeps fractional widths (e.g. 24 / 5 repeats) tiling without overlaps.
+    // A box past the right edge keeps its width and moves left, as in Grafana.
+    const w = Math.min(GRID_COLUMNS, Math.max(1, Math.round(b.x + b.w) - Math.round(b.x)));
+    const x = Math.min(GRID_COLUMNS - w, Math.max(0, Math.round(b.x)));
+    return { x, y: Math.max(0, b.y), w, h: Math.max(1, Math.round(b.h)) };
+  });
+  const out: GridBox[] = new Array(boxes.length);
+  const placed: GridBox[] = [];
+  for (const i of fixed) {
+    if (!snapped[i]) continue;
+    out[i] = { ...snapped[i], y: Math.round(snapped[i].y) };
+    placed.push(out[i]);
+  }
+  const order = snapped
+    .map((_, i) => i)
+    .filter((i) => !fixed.has(i))
+    .sort((a, b) => snapped[a].y - snapped[b].y || snapped[a].x - snapped[b].x || a - b);
+  for (const i of order) {
+    const box = { ...snapped[i], y: Math.floor(snapped[i].y) };
+    box.y = Math.min(box.y, Math.max(0, ...placed.map((p) => p.y + p.h)));
+    while (box.y > 0 && !placed.some((p) => overlaps({ ...box, y: box.y - 1 }, p))) box.y--;
+    for (let hit = placed.find((p) => overlaps(box, p)); hit; hit = placed.find((p) => overlaps(box, p))) box.y = hit.y + hit.h;
+    out[i] = box;
+    placed.push(box);
+  }
+  return out;
+}
 
 export const isRow = (p: Panel) => p.type === 'row';
 
@@ -82,12 +146,17 @@ export function layoutDashboard(dashboard: Dashboard, mode: LayoutMode = 'phone'
         };
       });
     })
-    .map((s) => ({
-      key: s.key,
-      row: s.row,
-      collapsed: !!s.row?.collapsed,
-      rows: packRows(expandPanelRepeats(s.children, repeat).sort(byPosition), mode),
-    }));
+    .map((s) => {
+      const panels = expandPanelRepeats(s.children, repeat).sort(byPosition);
+      return { key: s.key, row: s.row, collapsed: !!s.row?.collapsed, rows: packRows(panels, mode), grid: placeOnGrid(panels) };
+    });
+}
+
+/** A section's panels at their gridPos, floated up to the top of the section. */
+function placeOnGrid(panels: Panel[]): LayoutSection['grid'] {
+  const boxes = compactGrid(panels.map((p) => p.gridPos));
+  const cells = panels.map((panel, i): GridCell => ({ key: panelKey(panel), panel, span: boxes[i].w, ...boxes[i] }));
+  return { cells, h: Math.max(0, ...boxes.map((b) => b.y + b.h)) };
 }
 
 /** One option per selected value of `name`; every option when All is selected. */
