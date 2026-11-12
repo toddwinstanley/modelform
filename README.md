@@ -93,6 +93,12 @@ datasources and the config loader. It runs in Node too, for example to check con
 `@modelform/react-native/schema/app.schema.json` (app manifests) and `@modelform/react-native/schema/dashboard.schema.json` (dashboards
 and forms) give editors completion and inline checks.
 
+## Releases
+
+Versions are built and staged on npm by this repo's GitHub Actions release workflow, through trusted publishing, so each
+one carries npm provenance linking it to the commit it was built from. A maintainer approves each staged version,
+with 2FA, before it goes live. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT
