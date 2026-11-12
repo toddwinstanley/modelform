@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the Version Packages branch and release tags
+      pull-requests: write # the Version Packages PR
+      id-token: write # npm trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      # Staged publishing needs npm 11.15 or later.
+      - run: npm install -g npm@11.20.0
+      - run: pnpm install --frozen-lockfile
+
+      # With changesets pending, opens or updates the Version Packages PR.
+      - id: changesets
+        uses: changesets/action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # With none pending, stages the current version unless it's already tagged.
+      - if: steps.changesets.outputs.hasChangesets == 'false'
+        run: scripts/release.sh
