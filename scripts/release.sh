@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stages the version in package.json on npm, unless its git tag already exists, then tags it.
+# Stages the version in package.json on npm, unless its git tag already exists or npm already
+# has it, then tags it.
 # Run by .github/workflows/release.yml once no changesets are pending (that is, after a
 # "Version Packages" PR merges). A maintainer then approves the staged version on npmjs.com,
 # with 2FA, before it goes live.
@@ -10,6 +11,13 @@ tag="v$version"
 
 if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
   echo "$tag is already tagged; nothing to release."
+  exit 0
+fi
+
+if [ -n "$(npm view "@modelform/react-native@$version" version 2>/dev/null)" ]; then
+  echo "$version is already on npm; tagging it."
+  git tag "$tag"
+  git push origin "$tag"
   exit 0
 fi
 
