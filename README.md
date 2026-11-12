@@ -95,7 +95,7 @@ and forms) give editors completion and inline checks.
 
 ## Releases
 
-Versions are built and staged on npm by this repo's GitHub Actions release workflow, through trusted publishing, so each
+From 0.1.1 on, versions are built and staged on npm by this repo's GitHub Actions release workflow, through trusted publishing, so each
 one carries npm provenance linking it to the commit it was built from. A maintainer approves each staged version,
 with 2FA, before it goes live. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
