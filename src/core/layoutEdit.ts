@@ -311,9 +311,10 @@ const bottom = (panels: Panel[]) => Math.max(0, ...panels.map((p) => pos(p).y + 
 /** Top-level panels as boxes on the grid; rows always span it, one unit high. */
 const gridBoxes = (panels: Panel[]): GridBox[] => panels.map((p) => (isRow(p) ? { ...pos(p), x: 0, w: GRID_COLUMNS, h: 1 } : pos(p)));
 
-/** Boxes floated up the way the app shows them, with `fixed` placed first so the rest make way for it. */
-function settleBoxes(boxes: GridBox[], fixed?: number): GridBox[] {
-  const made = fixed === undefined ? boxes : compactGrid(boxes, new Set([fixed]));
+/** Boxes floated up the way the app shows them, with `fixed` placed first so the rest make way for them. */
+function settleBoxes(boxes: GridBox[], fixed?: number | number[]): GridBox[] {
+  const keep = new Set(fixed === undefined ? [] : [fixed].flat());
+  const made = keep.size ? compactGrid(boxes, keep) : boxes;
   return compactGrid(made);
 }
 
@@ -328,10 +329,10 @@ function writeBoxes(panels: Panel[], boxes: GridBox[]): Panel[] {
 
 /**
  * Floats every panel up the way the app shows them, so the file says what the app shows. With
- * `fixed`, that panel keeps its place (just moved or resized) and any it now covers move down
- * first. Panels already in place are left as the same objects.
+ * `fixed`, that panel (or those panels, e.g. a pasted block) keeps its place and any it now
+ * covers move down first. Panels already in place are left as the same objects.
  */
-export function settleLayout(panels: Panel[], fixed?: number): Panel[] {
+export function settleLayout(panels: Panel[], fixed?: number | number[]): Panel[] {
   return writeBoxes(panels, settleBoxes(gridBoxes(panels), fixed));
 }
 
