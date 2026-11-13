@@ -26,3 +26,4 @@ export * from './mappings';
 export * from './panelOptions';
 export * from './sample';
 export * from './snippets';
+export * from './templates';

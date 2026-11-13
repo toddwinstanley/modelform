@@ -41,15 +41,15 @@ const refers = (name: string) => new RegExp(`\\$${name}\\b|\\$\\{${name}(:\\w+)?
 const withChildren = (p: Panel): Panel[] => [p, ...(isRow(p) ? (p.panels ?? []) : [])];
 
 /** The metrics a panel records or reads, leaving out ones taken from a variable ($metric). */
-function panelMetrics(p: Panel): string[] {
+export function panelMetrics(p: Panel): string[] {
   const found: string[] = [];
   if (isInputType(p.type) && typeof p.options?.metric === 'string') found.push(p.options.metric);
   for (const t of p.targets ?? []) if (typeof t.metric === 'string' && t.metric && !t.metric.startsWith('$')) found.push(t.metric);
   return found;
 }
 
-/** `panels` with every recorded or read metric renamed per `map`. */
-function renameMetrics(panels: Panel[], map: Record<string, string>): Panel[] {
+/** `panels` (and the panels inside rows) with every recorded or read metric renamed per `map`. */
+export function renameMetrics(panels: Panel[], map: Record<string, string>): Panel[] {
   const rename = (p: Panel): Panel => {
     let out = p;
     if (isInputType(p.type) && typeof p.options?.metric === 'string' && map[p.options.metric]) out = { ...out, options: { ...out.options, metric: map[p.options.metric] } };
