@@ -11,6 +11,9 @@ import { addTime, parseDuration, startOf, type TimeUnit } from './time';
  *   { "refId": "A", "metric": "weight" }                                   raw points
  *   { "refId": "A", "metric": "water", "aggregate": "sum", "bucket": "1d" } daily totals
  *   { "refId": "A", "metric": "mood", "aggregate": "count", "groupBy": "text" }  one series per choice
+ *   { "refId": "A", "metric": "sets-weight", "aggregate": "max", "bucket": "1w",
+ *     "groupBy": { "field": "sets-exercise" } }                            one series per exercise
+ *   { "refId": "A", "metric": "meal-calories", "aggregate": "sum", "bucket": "save" }  one point per save
  */
 
 export const LOCAL_DATASOURCE_TYPE = 'modelform-local';
@@ -42,10 +45,17 @@ export type Aggregate = 'none' | 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last
 export interface LocalTarget extends Target {
   metric: string;
   aggregate?: Aggregate;
-  /** Bucket size such as "1h", "1d", "1w", "1M", or "auto" to follow the panel's interval. */
+  /**
+   * Bucket size such as "1h", "1d", "1w", "1M", or "auto" to follow the panel's interval;
+   * or "save" for one point per Save (the calories of each meal rather than of each day).
+   */
   bucket?: string;
-  /** "text" splits into one series per distinct text value (e.g. select choices). */
-  groupBy?: 'text';
+  /**
+   * "text" splits into one series per distinct text value (e.g. select choices).
+   * `{ field }` splits by another input's value recorded in the same Save and, inside an
+   * input-group, the same item: the weight of each set by its exercise.
+   */
+  groupBy?: 'text' | { field: string };
   /** Fill empty buckets with 0. Defaults to true for sum/count. */
   fillZero?: boolean;
   /**
@@ -76,7 +86,7 @@ export class LocalDataSource implements DataSource {
     // A target without a metric has nothing to read (a half-written config, say).
     const targets = (request.targets as LocalTarget[]).filter((t) => typeof t.metric === 'string' && t.metric);
     const entries = await this.store.list({
-      metrics: [...new Set(targets.map((t) => t.metric).filter(Boolean))],
+      metrics: [...new Set(targets.flatMap((t) => [t.metric, groupField(t)]).filter((m): m is string => !!m))],
       from: request.range.from,
       to: request.range.to,
     });
@@ -86,27 +96,51 @@ export class LocalDataSource implements DataSource {
     return targets.flatMap((t) => {
       const own = entries.filter((e) => e.metric === t.metric);
       const prior = carried.includes(t.metric) ? before.filter((e) => e.metric === t.metric && e.value != null).at(-1) : undefined;
-      return buildFrames(t, prior ? [prior, ...own] : own, request, this.options.label);
+      const field = groupField(t);
+      const siblings = field ? entries.filter((e) => e.metric === field) : undefined;
+      return buildFrames(t, prior ? [prior, ...own] : own, request, this.options.label, siblings);
     });
   }
 }
+
+/** The metric a target splits its series by, for `groupBy: { field }`. */
+export function groupField(target: LocalTarget): string | undefined {
+  const g = target.groupBy;
+  return typeof g === 'object' && g && typeof g.field === 'string' && g.field ? g.field : undefined;
+}
+
+/** What identifies the Save an entry came from: its id, or for entries recorded before saves had ids, its time. */
+const saveOf = (e: Entry) => e.save ?? `@${e.ts}`;
+
+/** Where an entry sits: its Save and, inside an input-group, its item. */
+const placeOf = (e: Entry) => `${saveOf(e)}#${e.item ?? ''}`;
 
 export function buildFrames(
   target: LocalTarget,
   entries: Entry[],
   request: Pick<QueryRequest, 'range' | 'intervalMs'>,
   label?: LocalDataSourceOptions['label'],
+  /** For `groupBy: { field }`: that field's entries, whose values name the series. */
+  siblings: Entry[] = [],
 ): DataFrame[] {
   const sorted = [...entries].sort((a, b) => a.ts - b.ts);
+  const field = groupField(target);
+  // The field's value at each place (Save and item), for splitting by it.
+  const byPlace = new Map<string, string>();
+  if (field) for (const s of siblings) byPlace.set(placeOf(s), s.text ?? String(s.value));
+  const split = target.groupBy === 'text' || !!field;
   const groups = new Map<string | undefined, Entry[]>();
   for (const e of sorted) {
-    const key = target.groupBy === 'text' ? e.text ?? String(e.value) : undefined;
+    const key = target.groupBy === 'text' ? e.text ?? String(e.value) : field ? byPlace.get(placeOf(e)) : undefined;
+    // Split by a field, an entry with nothing in that field belongs to no series.
+    if (field && key === undefined) continue;
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
-  if (!groups.size && target.groupBy !== 'text') groups.set(undefined, []);
+  if (!groups.size && !split) groups.set(undefined, []);
 
   const aggregate = target.aggregate ?? (target.groupBy === 'text' ? 'count' : 'none');
   const name = target.alias ?? target.metric;
+  const labelKey = field ?? target.metric;
 
   return [...groups].map(([group, rows]) => {
     let times: number[];
@@ -124,12 +158,14 @@ export function buildFrames(
           values.push(values[values.length - 1]);
         }
       }
+    } else if (target.bucket === 'save') {
+      ({ times, values } = perSave(rows, aggregate));
     } else {
       const bucket = !target.bucket || target.bucket === 'auto' ? request.intervalMs : target.bucket;
       const fill = target.fillZero ?? (aggregate === 'sum' || aggregate === 'count');
       ({ times, values } = bucketize(rows, aggregate, bucket, request.range, fill));
     }
-    const display = group == null ? name : label?.(target.metric, group) ?? group;
+    const display = group == null ? name : label?.(labelKey, group) ?? group;
     return {
       name,
       refId: target.refId,
@@ -139,12 +175,42 @@ export function buildFrames(
           name: display,
           type: 'number',
           values,
-          labels: group != null ? { [target.metric]: group } : undefined,
+          labels: group != null ? { [labelKey]: group } : undefined,
           config: { displayName: display },
         },
       ],
     } satisfies DataFrame;
   });
+}
+
+/** One point per Save, at its time: the aggregate of that Save's values. */
+function perSave(rows: Entry[], aggregate: Exclude<Aggregate, 'none'>) {
+  const saves = new Map<string, { ts: number; values: number[] }>();
+  for (const e of rows) {
+    const v = aggregate === 'count' ? 1 : e.value;
+    if (v == null) continue;
+    const s = saves.get(saveOf(e)) ?? { ts: e.ts, values: [] };
+    s.values.push(v);
+    saves.set(saveOf(e), s);
+  }
+  const points = [...saves.values()].sort((a, b) => a.ts - b.ts);
+  return { times: points.map((p) => p.ts), values: points.map((p) => reduce(p.values, aggregate)) };
+}
+
+function reduce(vs: number[], aggregate: Exclude<Aggregate, 'none'>): number {
+  switch (aggregate) {
+    case 'sum':
+    case 'count':
+      return vs.reduce((a, b) => a + b, 0);
+    case 'avg':
+      return vs.reduce((a, b) => a + b, 0) / vs.length;
+    case 'min':
+      return Math.min(...vs);
+    case 'max':
+      return Math.max(...vs);
+    case 'last':
+      return vs[vs.length - 1];
+  }
 }
 
 function bucketize(
@@ -166,20 +232,7 @@ function bucketize(
   const keys = fillZero ? step.range(range.from, range.to) : [...sums.keys()].sort((a, b) => a - b);
   const values = keys.map((k) => {
     const vs = sums.get(k);
-    if (!vs?.length) return fillZero ? 0 : null;
-    switch (aggregate) {
-      case 'sum':
-      case 'count':
-        return vs.reduce((a, b) => a + b, 0);
-      case 'avg':
-        return vs.reduce((a, b) => a + b, 0) / vs.length;
-      case 'min':
-        return Math.min(...vs);
-      case 'max':
-        return Math.max(...vs);
-      case 'last':
-        return vs[vs.length - 1];
-    }
+    return vs?.length ? reduce(vs, aggregate) : fillZero ? 0 : null;
   });
   return { times: keys, values };
 }

@@ -49,7 +49,12 @@ export function Weight() {
 ```json
 { "refId": "A", "metric": "weight" }
 { "refId": "A", "metric": "water", "aggregate": "sum", "bucket": "1d" }
+{ "refId": "A", "metric": "sets-weight", "aggregate": "max", "bucket": "1w", "groupBy": { "field": "sets-exercise" } }
+{ "refId": "A", "metric": "meal-calories", "aggregate": "sum", "bucket": "save" }
 ```
+
+`groupBy: { "field": metric }` makes one series per value of another input saved alongside (in an `input-group`,
+the same item's), and `bucket: "save"` one point per Save.
 
 To chart a Grafana instance instead, use `new GrafanaDataSource(new GrafanaClient({ url, token }))` with a
 service-account token. Grafana runs the queries, so any of its datasources works.
