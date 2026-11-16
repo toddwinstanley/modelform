@@ -14,6 +14,8 @@ same format. One JSON model describes both what an app records and how it charts
   instance's HTTP API. You can also implement your own.
 - **Configs:** a manifest format for whole apps (tabs, forms and dashboards), with JSON Schemas, validation that
   reports issues instead of throwing, and a loader with caching and last-good fallback.
+- **AI assistants:** `templatePrompt()` writes a prompt for making a template with any assistant (Claude, ChatGPT…),
+  and `readTemplateAnswer()` reads the template back out of its reply. Nothing calls a model.
 
 modelform is not affiliated with or endorsed by Grafana Labs. It reads the dashboard JSON model that Grafana
 exports, and ignores keys it doesn't understand.
