@@ -175,7 +175,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
         const p = panels.find((x) => x.options.metric === m);
         return p && (checked || m in edits) ? inputProblem(p, value(m)) : undefined;
       },
-      group: (g) => groupState(g, itemsOf(g), last[groupKey(g)], checked || groupKey(g) in groupEdits, (update) => {
+      group: (g) => groupState(g, itemsOf(g), last[groupKey(g)], groupKey(g) in groupEdits, checked, (update) => {
         setStatus(null);
         setGroupEdits((all) => ({ ...all, [groupKey(g)]: update(all[groupKey(g)] ?? base[groupKey(g)] ?? []) }));
       }),
@@ -278,6 +278,7 @@ function groupState(
   group: InputGroupPanel,
   items: HeldItem[],
   last: GroupItem[] | undefined,
+  edited: boolean,
   showProblems: boolean,
   update: (change: (items: HeldItem[]) => HeldItem[]) => void,
 ): FormGroup {
@@ -289,6 +290,7 @@ function groupState(
   return {
     items: items.map((i) => ({ key: i.key, values: i.values, edited: i.edited })),
     canAdd: typeof max !== 'number' || items.length < max,
+    edited,
     problem: showProblems && typeof min === 'number' && filled < min ? `At least ${min}` : undefined,
     add: () => update((all) => (typeof max === 'number' && all.length >= max ? all : [...all, fresh(all.length)])),
     duplicate: (index) =>

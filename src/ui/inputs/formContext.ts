@@ -19,6 +19,8 @@ export interface InputFormState {
 export interface FormGroup {
   items: { key: string; values: GroupItem; edited: string[] }[];
   canAdd: boolean;
+  /** Whether the group has changes since it was last saved or discarded. */
+  edited?: boolean;
   /** Why the group as a whole can't be saved (too few items), once that's worth showing. */
   problem?: string;
   add(): void;
