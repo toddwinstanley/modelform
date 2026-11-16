@@ -135,14 +135,18 @@ describe('input-group in a form', () => {
     // The card takes its title from the exercise.
     expect(f.view.el.textContent).toContain('Squat');
     await f.press(f.byLabel('Duplicate Squat'));
-    expect(f.fields()).toHaveLength(6);
+    // The filled set collapses to a summary; the copy is open below it.
+    expect(f.view.el.textContent).toContain('100 kg · 5');
+    expect(f.fields().map((x) => x.value)).toEqual(['Squat', '100', '5']);
+    await f.type(f.fields()[2], '3');
     await f.press(f.byText('+ Add set'));
     expect(f.view.el.textContent).toContain('Set 3');
-    expect(f.fields()).toHaveLength(9);
-    [, , , , , reps] = f.fields();
-    await f.type(reps, '3');
-    await f.type(f.fields()[6], 'Lunge');
-    await f.type(f.fields()[8], '12');
+    expect(f.fields()).toHaveLength(3);
+    await f.type(f.fields()[0], 'Lunge');
+    await f.type(f.fields()[2], '12');
+    // Collapsed cards open again from their title.
+    await f.press(f.byLabel('Expand Squat'));
+    expect(f.fields()).toHaveLength(6);
     await f.press(f.byText('Save'));
     expect(f.view.el.textContent).toContain('Saved 8 values');
 
@@ -151,7 +155,7 @@ describe('input-group in a form', () => {
     expect(saved.filter((e) => e.item === 1).map((e) => e.value ?? e.text)).toEqual(['Squat', 100, 3]);
     expect(saved.filter((e) => e.item === 2).map((e) => e.value ?? e.text)).toEqual(['Lunge', 12]);
 
-    // A new form starts from those three sets.
+    // A new form starts from those three sets, all open.
     exercise = f.fields()[0];
     expect(f.fields().map((x) => x.value)).toEqual(['Squat', '100', '5', 'Squat', '100', '3', 'Lunge', '', '12']);
     expect(exercise.value).toBe('Squat');
@@ -166,17 +170,54 @@ describe('input-group in a form', () => {
     expect(await f.store.list({ metrics: ['exercise', 'reps'] })).toEqual([]);
   });
 
+  it('opens a collapsed item that has a problem', async () => {
+    const f = await setup(form(sets()));
+    await f.type(f.fields()[0], 'Bench');
+    await f.press(f.byText('+ Add set'));
+    // Bench collapsed when the next set was added.
+    expect(f.fields()).toHaveLength(3);
+    await f.press(f.byText('Save'));
+    expect(f.view.el.textContent).toContain('Can’t save. Set 1: Reps is required');
+    expect(f.fields()).toHaveLength(6);
+  });
+
   it('removes and reorders items', async () => {
     const f = await setup(form(sets()));
     await f.type(f.fields()[0], 'A');
     await f.press(f.byText('+ Add set'));
-    await f.type(f.fields()[3], 'B');
+    // A collapsed, so the only open fields are the new set's.
+    await f.type(f.fields()[0], 'B');
     await f.press(f.byLabel('Move B up'));
-    expect(f.fields()[0].value).toBe('B');
+    const text = f.view.el.textContent!;
+    expect(text.indexOf('▾ B')).toBeLessThan(text.indexOf('▸ A'));
     await f.press(f.byLabel('Remove A'));
-    expect(f.fields()).toHaveLength(3);
+    expect(f.fields().map((x) => x.value)).toEqual(['B', '', '']);
     // B was added and A removed.
     expect(f.view.el.textContent).toContain('2 unsaved changes');
+  });
+
+  it('drags an item past the others by its handle', async () => {
+    const f = await setup(form(sets()));
+    await f.type(f.fields()[0], 'A');
+    await f.press(f.byText('+ Add set'));
+    await f.type(f.fields()[0], 'B');
+    await f.press(f.byText('+ Add set'));
+    await f.type(f.fields()[0], 'C');
+    const order = () => [...f.view.el.querySelectorAll('[aria-label^="Drag "]')].map((e) => e.getAttribute('aria-label')!.split(' ')[1]);
+    expect(order()).toEqual(['A', 'B', 'C']);
+    const handle = f.view.el.querySelector('[aria-label="Drag C to reorder"]')!;
+    const mouse = (type: string, y: number, target: EventTarget = handle) =>
+      act(async () => {
+        target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 5, clientY: y, buttons: type === 'mouseup' ? 0 : 1 }));
+      });
+    // jsdom's layout shim makes each card as tall as the viewport (768), so passing two takes over 1.5 of them.
+    await mouse('mousedown', 2000);
+    // Nothing moves in the list until the card is dropped.
+    for (const y of [1600, 1200, 800]) await mouse('mousemove', y, document);
+    expect(order()).toEqual(['A', 'B', 'C']);
+    await mouse('mouseup', 800, document);
+    await settle();
+    expect(order()).toEqual(['C', 'A', 'B']);
   });
 
   it('edits an earlier save, keeping its items and save id', async () => {
