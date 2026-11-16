@@ -3,6 +3,7 @@
  * already has (Claude, ChatGPT…), and reading its answer back. Nothing here calls a model: an app copies the prompt for the
  * user to paste, and the user pastes the answer back.
  */
+import { documentKind } from './inputs';
 import { prepareDashboard } from './manifest';
 import { screenDocuments } from './navigation';
 import type { Dashboard, DocumentKind, Panel } from './schema';
@@ -314,7 +315,10 @@ export function readDocumentAnswer(text: string, kind: DocumentKind): { document
   }
   if (!json || typeof json !== 'object' || Array.isArray(json)) return { error: `That isn’t a ${kind}` };
   const raw = json as Record<string, unknown>;
-  if (raw.kind !== undefined && raw.kind !== kind) return { error: `That’s a ${String(raw.kind)}, not a ${kind}` };
+  // Without a stated kind, go by whether it has inputs, the way modelform guesses elsewhere.
+  const stated = raw.kind ?? (Array.isArray(raw.panels) ? documentKind(raw as Partial<Dashboard>) : undefined);
+  if (stated !== undefined && stated !== kind)
+    return { error: raw.kind === undefined ? (kind === 'form' ? 'That has no inputs, so it isn’t a form' : 'That has inputs, so it’s a form, not a dashboard') : `That’s a ${String(raw.kind)}, not a ${kind}` };
   const { dashboard, issues } = prepareDashboard(raw, kind);
   if (!dashboard) return { error: issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ') || `That isn’t a ${kind}` };
   const document = { kind, ...raw } as unknown as Dashboard;

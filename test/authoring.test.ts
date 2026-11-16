@@ -104,6 +104,11 @@ describe('editing one document', () => {
     expect(readDocumentAnswer(answer(EXAMPLE_TEMPLATE), 'form')).toEqual({ error: 'That’s a template, not one form' });
     expect(readDocumentAnswer(answer([1, 2]), 'form')).toEqual({ error: 'That isn’t a form' });
     expect(readDocumentAnswer(answer({ kind: 'form', title: 'No panels' }), 'form')).toHaveProperty('error');
+    // Without a stated kind it goes by inputs.
+    const { kind: _f, ...bareForm } = form;
+    const { kind: _d, ...bareDashboard } = dashboard;
+    expect(readDocumentAnswer(answer(bareDashboard), 'form')).toEqual({ error: 'That has no inputs, so it isn’t a form' });
+    expect(readDocumentAnswer(answer(bareForm), 'dashboard')).toEqual({ error: 'That has inputs, so it’s a form, not a dashboard' });
   });
 
   it('readDocumentAnswer warns about values that will be ignored', () => {
