@@ -7,6 +7,6 @@ export { RenderBoundary } from './ui/RenderBoundary';
 export { DashboardToolbar, Chip } from './ui/Toolbar';
 export { InputForm, type InputFormProps } from './ui/inputs/InputForm';
 export { Calendar } from './ui/TimeRangeSheet';
-export { InputFormContext, useInputForm, type InputFormState } from './ui/inputs/formContext';
+export { groupKey, InputFormContext, useInputForm, type FormGroup, type InputFormState } from './ui/inputs/formContext';
 export { registerPanel } from './ui/panels/registry';
 export { Legend, NoData, type PanelProps } from './ui/panels/common';

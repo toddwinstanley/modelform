@@ -19,6 +19,7 @@ const DASHBOARD_ID = 'urn:modelform:dashboard';
 const PANEL_TYPES = [
   'row', 'timeseries', 'trend', 'xychart', 'stat', 'gauge', 'bargauge', 'piechart', 'barchart', 'table', 'text', 'geomap',
   'input-number', 'input-slider', 'input-select', 'input-toggle', 'input-rating', 'input-text', 'input-counter', 'input-duration',
+  'input-group',
 ];
 
 function generate(file, type, additionalProperties) {
@@ -56,13 +57,19 @@ function prune(schema) {
 function dashboardSchema() {
   const schema = generate('schema.ts', 'Dashboard', true);
   Object.assign(schema.definitions, generate('inputs.ts', 'InputOptions', true).definitions);
+  Object.assign(schema.definitions, generate('inputs.ts', 'InputGroupOptions', true).definitions);
   const panel = schema.definitions.Panel;
   panel.properties.type.examples = PANEL_TYPES;
   // Input panels record to options.metric, so they need options shaped like InputOptions.
+  // An input-group's fields do that instead, so it needs InputGroupOptions.
   panel.allOf = [
     {
-      if: { properties: { type: { pattern: '^input-' } }, required: ['type'] },
+      if: { properties: { type: { pattern: '^input-(?!group$)' } }, required: ['type'] },
       then: { required: ['options'], properties: { options: { $ref: '#/definitions/InputOptions' } } },
+    },
+    {
+      if: { properties: { type: { const: 'input-group' } }, required: ['type'] },
+      then: { required: ['options'], properties: { options: { $ref: '#/definitions/InputGroupOptions' } } },
     },
   ];
   return { $schema: schema.$schema, $id: DASHBOARD_ID, title: 'modelform dashboard or form', ...schema };

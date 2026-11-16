@@ -4,7 +4,7 @@
  * write the files where the config is served.
  */
 import { applyEdits, findNodeAtLocation, format, parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
-import { isInputType } from './inputs';
+import { INPUT_GROUP, isInputType } from './inputs';
 import { applyJsonEdits } from './jsonEdit';
 import { LOCAL_DATASOURCE_TYPE } from './local';
 import type { Panel } from './schema';
@@ -184,7 +184,7 @@ export function setJsonValue(text: string, path: (string | number)[], value: unk
 
 /** Panel types an editor offers to add, by what they're for. */
 export const PANEL_TYPES = {
-  form: ['input-number', 'input-slider', 'input-select', 'input-toggle', 'input-rating', 'input-text', 'input-counter', 'input-duration', 'text', 'row'],
+  form: ['input-number', 'input-slider', 'input-select', 'input-toggle', 'input-rating', 'input-text', 'input-counter', 'input-duration', 'input-group', 'text', 'row'],
   dashboard: ['timeseries', 'barchart', 'stat', 'gauge', 'bargauge', 'piechart', 'table', 'text', 'row'],
 };
 
@@ -192,6 +192,13 @@ export const PANEL_TYPES = {
 export function newPanel(type: string, metric = 'value'): Panel {
   const title = type === 'row' ? 'Section' : metric.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
   if (type === 'row') return { type, title, gridPos: { x: 0, y: 0, w: 24, h: 1 } };
+  if (type === INPUT_GROUP) {
+    const fields = [
+      { type: 'input-text', title: 'Name', options: { metric: `${metric}-name` } },
+      { type: 'input-number', title: 'Amount', options: { metric: `${metric}-amount` } },
+    ];
+    return { type, title: 'Items', gridPos: { x: 0, y: 0, w: 24, h: 10 }, options: { itemTitle: 'Item', fields } };
+  }
   if (isInputType(type)) {
     const options: Record<string, unknown> = { metric };
     if (type === 'input-select') options.choices = [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }];

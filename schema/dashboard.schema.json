@@ -129,7 +129,8 @@
             "input-rating",
             "input-text",
             "input-counter",
-            "input-duration"
+            "input-duration",
+            "input-group"
           ]
         },
         "title": {
@@ -264,7 +265,7 @@
           "if": {
             "properties": {
               "type": {
-                "pattern": "^input-"
+                "pattern": "^input-(?!group$)"
               }
             },
             "required": [
@@ -278,6 +279,28 @@
             "properties": {
               "options": {
                 "$ref": "#/definitions/InputOptions"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "input-group"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "options"
+            ],
+            "properties": {
+              "options": {
+                "$ref": "#/definitions/InputGroupOptions"
               }
             }
           }
@@ -935,6 +958,94 @@
         "label",
         "value"
       ]
+    },
+    "InputGroupOptions": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GroupField"
+          },
+          "description": "The inputs each item has. Any input type but input-counter."
+        },
+        "itemTitle": {
+          "type": "string",
+          "description": "Items are titled \"<itemTitle> 1\", \"<itemTitle> 2\"… (default \"Item\")."
+        },
+        "titleFrom": {
+          "type": "string",
+          "description": "A field's metric whose value titles its item once it has one."
+        },
+        "min": {
+          "type": "number",
+          "description": "Fewest items Save accepts (default 0). Items left completely empty don't count."
+        },
+        "max": {
+          "type": "number",
+          "description": "Most items the user can add."
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "const": "last"
+            }
+          ],
+          "description": "Empty items a new form starts with (default 1), or \"last\" for the items saved last time."
+        },
+        "addLabel": {
+          "type": "string",
+          "description": "Text of the add button (default \"Add <itemTitle>\")."
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "description": "input-group: fields filled in once per item, for as many items as the user adds (the entree and sides of a meal, the sets of a workout). Each field records to its own metric; entries of one item share `save` and `item`."
+    },
+    "GroupField": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/definitions/InputType"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "span": {
+          "type": "number",
+          "description": "Width inside an item, out of 24 (default 24)."
+        },
+        "options": {
+          "$ref": "#/definitions/InputOptions"
+        }
+      },
+      "required": [
+        "type",
+        "options"
+      ],
+      "description": "One field of an input-group: an input panel without `id` or `gridPos`, `span` columns (of 24) wide in its item."
+    },
+    "InputType": {
+      "type": "string",
+      "enum": [
+        "input-number",
+        "input-slider",
+        "input-select",
+        "input-toggle",
+        "input-rating",
+        "input-text",
+        "input-counter",
+        "input-duration"
+      ],
+      "description": "Input forms reuse the dashboard format: a form is a dashboard whose panels have `input-*` types. Layout, rows and gridPos work exactly like visualization panels, so one layout engine (and one hot-reloadable JSON file) drives both tabs.\n\n  { \"type\": \"input-number\", \"title\": \"Weight\", \"gridPos\": {\"x\":0,\"y\":0,\"w\":12,\"h\":3},     \"options\": { \"metric\": \"weight\", \"unit\": \"kg\", \"step\": 0.1, \"default\": \"last\" } }"
     }
   }
 }

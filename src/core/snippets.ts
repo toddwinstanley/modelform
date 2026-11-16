@@ -10,7 +10,7 @@
  * Panels carry no ids, and their gridPos is relative to the top left of the copied block.
  */
 import { renameVariableInPanels } from './dashboardSettings';
-import { isInputType } from './inputs';
+import { INPUT_GROUP, isFormPanelType, isInputType } from './inputs';
 import { GRID_COLUMNS, isRow } from './layout';
 import { nextPanelId, readingOrder, settleLayout } from './layoutEdit';
 import type { Dashboard, GridPos, Panel, TemplateVariable } from './schema';
@@ -44,6 +44,8 @@ const withChildren = (p: Panel): Panel[] => [p, ...(isRow(p) ? (p.panels ?? []) 
 export function panelMetrics(p: Panel): string[] {
   const found: string[] = [];
   if (isInputType(p.type) && typeof p.options?.metric === 'string') found.push(p.options.metric);
+  if (p.type === INPUT_GROUP && Array.isArray(p.options?.fields))
+    for (const f of p.options.fields) if (typeof f?.options?.metric === 'string') found.push(f.options.metric);
   for (const t of p.targets ?? []) if (typeof t.metric === 'string' && t.metric && !t.metric.startsWith('$')) found.push(t.metric);
   return found;
 }
@@ -53,6 +55,12 @@ export function renameMetrics(panels: Panel[], map: Record<string, string>): Pan
   const rename = (p: Panel): Panel => {
     let out = p;
     if (isInputType(p.type) && typeof p.options?.metric === 'string' && map[p.options.metric]) out = { ...out, options: { ...out.options, metric: map[p.options.metric] } };
+    if (p.type === INPUT_GROUP && Array.isArray(p.options?.fields)) {
+      const to = (m: unknown) => (typeof m === 'string' && map[m]) || m;
+      const fields = p.options.fields.map((f: { options?: { metric?: unknown } }) => (f?.options && to(f.options.metric) !== f.options.metric ? { ...f, options: { ...f.options, metric: to(f.options.metric) } } : f));
+      const titleFrom = to(p.options.titleFrom);
+      out = { ...out, options: { ...out.options, fields, ...(titleFrom !== undefined && { titleFrom }) } };
+    }
     if (p.targets?.some((t) => typeof t.metric === 'string' && map[t.metric])) out = { ...out, targets: p.targets.map((t) => (typeof t.metric === 'string' && map[t.metric] ? { ...t, metric: map[t.metric] } : t)) };
     if (p.panels?.length) out = { ...out, panels: p.panels.map(rename) };
     return out;
@@ -112,7 +120,7 @@ function snippetOf(panels: Panel[], available: TemplateVariable[]): PanelSnippet
   return {
     $modelform: 'panels',
     version: SNIPPET_VERSION,
-    kind: all.some((p) => isInputType(p.type)) ? 'form' : 'dashboard',
+    kind: all.some((p) => isFormPanelType(p.type)) ? 'form' : 'dashboard',
     panels: out,
     variables: available.filter((v) => used.has(v.name)),
     metrics: [...new Set(all.flatMap(panelMetrics))],
@@ -228,10 +236,10 @@ function mergeVariables(existing: TemplateVariable[], incoming: TemplateVariable
  */
 export function pasteSnippet(dashboard: Dashboard, snippet: PanelSnippet, options: PasteOptions = {}): PasteResult {
   const existing = dashboard.panels ?? [];
-  const kind = options.kind ?? (existing.flatMap(withChildren).some((p) => isInputType(p.type)) ? 'form' : 'dashboard');
+  const kind = options.kind ?? (existing.flatMap(withChildren).some((p) => isFormPanelType(p.type)) ? 'form' : 'dashboard');
   const skipped: string[] = [];
   const keep = (p: Panel) => {
-    if (kind === 'dashboard' && isInputType(p.type)) {
+    if (kind === 'dashboard' && isFormPanelType(p.type)) {
       skipped.push(p.title || p.type);
       return false;
     }
