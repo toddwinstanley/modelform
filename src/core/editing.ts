@@ -221,10 +221,12 @@ export function newDocument(kind: 'form' | 'dashboard', title: string): string {
   const doc =
     kind === 'form'
       ? {
+          kind,
           title,
           panels: [{ id: 1, type: 'input-number', title: 'Value', gridPos: { x: 0, y: 0, w: 24, h: 3 }, options: { metric: 'value', step: 1 } }],
         }
       : {
+          kind,
           title,
           time: { from: 'now-30d', to: 'now' },
           panels: [

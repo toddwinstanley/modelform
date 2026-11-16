@@ -8,7 +8,8 @@ same format. One JSON model describes both what an app records and how it charts
   template variables and repeats. Layouts reflow into a single column on phones.
 - **Forms:** a form is a dashboard whose panels are `input-*` types (number, slider, select, toggle, rating, text,
   counter, duration). Entries go to an `EntryStore` you provide, and dashboards chart them through the local
-  datasource.
+  datasource. A document can say what it is with `"kind": "form"` or `"kind": "dashboard"`; without it, one with
+  inputs counts as a form.
 - **Datasources:** a local one over recorded entries, and a Grafana one that runs panel queries through a Grafana
   instance's HTTP API. You can also implement your own.
 - **Configs:** a manifest format for whole apps (tabs, forms and dashboards), with JSON Schemas, validation that

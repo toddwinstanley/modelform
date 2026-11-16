@@ -3,12 +3,20 @@
  * Unknown keys are tolerated and ignored, so dashboards exported from Grafana
  * load as-is. See https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/view-dashboard-json-model/
  *
- * modelform adds two extensions, both of which Grafana ignores:
+ * modelform adds three extensions, all of which Grafana ignores:
+ *  - `kind` to say whether the document is a form or a dashboard
  *  - `panel.mobile` to tune phone layout per panel
  *  - `input-*` panel types for data entry forms (see inputs.ts)
  */
 
+export type DocumentKind = 'form' | 'dashboard';
+
 export interface Dashboard {
+  /**
+   * Whether this document is a form (for recording entries) or a dashboard (for showing them).
+   * Without it, a document with input-* panels counts as a form. See documentKind().
+   */
+  kind?: DocumentKind;
   uid?: string;
   title: string;
   description?: string;
