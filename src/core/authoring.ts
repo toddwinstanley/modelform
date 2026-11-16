@@ -1,31 +1,18 @@
 /**
- * Prompts for making templates with an AI assistant the user already has (Claude, ChatGPT…),
- * and reading its answer back. Nothing here calls a model: an app copies the prompt for the
+ * Prompts for making templates, or changing a form or dashboard, with an AI assistant the user
+ * already has (Claude, ChatGPT…), and reading its answer back. Nothing here calls a model: an app copies the prompt for the
  * user to paste, and the user pastes the answer back.
  */
+import { documentKind } from './inputs';
 import { prepareDashboard } from './manifest';
 import { screenDocuments } from './navigation';
+import type { Dashboard, DocumentKind, Panel } from './schema';
 import { parseTemplate, type AppTemplate } from './templates';
 
-/** How to write a modelform template, for an assistant. Kept next to the format so they change together. */
-export const AUTHORING_GUIDE = `# modelform templates
+/** How to write forms and dashboards, for an assistant: the part of the guide that applies to one document. */
+export const DOCUMENT_GUIDE = `## Documents
 
-A template is JSON that adds forms (for recording entries) and dashboards (for charting them) to an app, plus tabs to show them.
-
-\`\`\`
-{
-  "$modelform": "template",
-  "version": 1,
-  "title": "Short name",
-  "description": "One sentence on what it's for.",
-  "documents": [ { "kind": "form" | "dashboard", "id": "letters-digits-dashes", "dashboard": { ...document } } ],
-  "tabs": [ ...tabs ]
-}
-\`\`\`
-
-## Documents
-
-A document is a subset of Grafana's dashboard JSON: \`{ "kind": "form" | "dashboard", "title": "…", "panels": [ … ] }\`, and dashboards add \`"time": { "from": "now-30d", "to": "now" }\`. Its \`kind\` matches its entry in \`documents\`.
+A document is a subset of Grafana's dashboard JSON: \`{ "kind": "form" | "dashboard", "title": "…", "panels": [ … ] }\`, and dashboards add \`"time": { "from": "now-30d", "to": "now" }\`.
 
 Every panel has an \`id\` (a number, unique in its document), a \`type\`, a \`title\`, and a \`gridPos\` \`{ "x", "y", "w", "h" }\` on a 24-column grid: \`w: 24\` is full width, \`w: 12\` half. Stack panels top to bottom with no gaps or overlaps (each \`y\` is the previous \`y + h\` unless they sit side by side). On phones panels show full width in that order.
 
@@ -72,7 +59,27 @@ Units and ranges go in \`"fieldConfig": { "defaults": { "unit": "…", "min", "m
 
 Charts can't do arithmetic across metrics (weight × reps, a ratio of two inputs). Chart what's recorded instead, or add an input for the combined value, and say which you did in the sentence before the JSON.
 
-## Tabs
+`;
+
+/** How to write a modelform template, for an assistant. Kept next to the format so they change together. */
+export const AUTHORING_GUIDE = `# modelform templates
+
+A template is JSON that adds forms (for recording entries) and dashboards (for charting them) to an app, plus tabs to show them.
+
+\`\`\`
+{
+  "$modelform": "template",
+  "version": 1,
+  "title": "Short name",
+  "description": "One sentence on what it's for.",
+  "documents": [ { "kind": "form" | "dashboard", "id": "letters-digits-dashes", "dashboard": { ...document } } ],
+  "tabs": [ ...tabs ]
+}
+\`\`\`
+
+Each document's \`kind\` matches its entry in \`documents\`.
+
+${DOCUMENT_GUIDE}## Tabs
 
 \`{ "id": "…", "title": "…", "icon": "…", "screen": … }\`, where the screen is one of:
 
@@ -259,4 +266,121 @@ export function fixTemplatePrompt(problems: string[]): string {
     '',
     'Fix these and reply with the whole corrected template as one ```json code block.',
   ].join('\n');
+}
+
+export interface DocumentPromptContext {
+  /** Metrics the app records, so charts can read them and new inputs don't clash with them. */
+  recorded?: string[];
+}
+
+/** A prompt asking an assistant to change `document` as `request` says and send the whole document back. */
+export function documentPrompt(request: string, document: Dashboard, { recorded = [] }: DocumentPromptContext = {}): string {
+  const kind = document.kind ?? 'dashboard';
+  return [
+    `I’m building an app with modelform studio. Change this ${kind} for me:`,
+    '',
+    request.trim().replace(/^/gm, '> '),
+    '',
+    recorded.length ? `The app records these metrics: ${recorded.map((m) => `\`${m}\``).join(', ')}. Charts can read any of them.` : '',
+    'Keep the ids of panels you keep and give new panels ids not used yet. Don’t change an existing input’s metric unless I asked: entries saved under the old name would stop showing up.',
+    `Keep \`"kind": "${kind}"\`. Reply with the whole changed ${kind} as one \`\`\`json code block, not just the parts that changed. A sentence before it is fine; nothing after it.`,
+    '',
+    `## The ${kind} now`,
+    '',
+    '```json',
+    JSON.stringify(document, null, 2),
+    '```',
+    '',
+    DOCUMENT_GUIDE,
+  ]
+    .filter((line, i, all) => line !== '' || all[i - 1] !== '')
+    .join('\n');
+}
+
+/**
+ * Reads a changed document out of an assistant's reply: a document, or a template holding just
+ * one. It must be the same kind as the one asked about. Warnings are values that will be ignored.
+ */
+export function readDocumentAnswer(text: string, kind: DocumentKind): { document: Dashboard; warnings: string[] } | { error: string } {
+  let json: unknown;
+  try {
+    json = jsonFromAnswer(text);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  const wrapper = json as { $modelform?: unknown; documents?: { dashboard?: unknown }[] };
+  if (wrapper?.$modelform === 'template') {
+    if (!Array.isArray(wrapper.documents) || wrapper.documents.length !== 1) return { error: `That’s a template, not one ${kind}` };
+    json = wrapper.documents[0]?.dashboard;
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return { error: `That isn’t a ${kind}` };
+  const raw = json as Record<string, unknown>;
+  // Without a stated kind, go by whether it has inputs, the way modelform guesses elsewhere.
+  const stated = raw.kind ?? (Array.isArray(raw.panels) ? documentKind(raw as Partial<Dashboard>) : undefined);
+  if (stated !== undefined && stated !== kind)
+    return { error: raw.kind === undefined ? (kind === 'form' ? 'That has no inputs, so it isn’t a form' : 'That has inputs, so it’s a form, not a dashboard') : `That’s a ${String(raw.kind)}, not a ${kind}` };
+  const { dashboard, issues } = prepareDashboard(raw, kind);
+  if (!dashboard) return { error: issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ') || `That isn’t a ${kind}` };
+  const document = { kind, ...raw } as unknown as Dashboard;
+  return { document, warnings: issues.filter((i) => i.severity === 'warning').map((i) => `${i.path}: ${i.message}`) };
+}
+
+/** A follow-up asking the assistant to fix what was wrong with the form or dashboard it sent. */
+export function fixDocumentPrompt(problems: string[], kind: DocumentKind): string {
+  return [
+    `modelform couldn’t use that ${kind} as it was:`,
+    '',
+    ...problems.map((p) => `- ${p}`),
+    '',
+    `Fix these and reply with the whole corrected ${kind} as one \`\`\`json code block.`,
+  ].join('\n');
+}
+
+export interface PanelChange {
+  change: 'added' | 'removed' | 'changed';
+  id: number;
+  title: string;
+  type: string;
+  /** For a changed panel, what changed: "title", "type", "position", "size", "options", "queries", "field config", "other". */
+  what: string[];
+}
+
+export interface DocumentChanges {
+  /** Settings of the document itself that changed, e.g. "title", "time range". */
+  document: string[];
+  panels: PanelChange[];
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const flat = (d: Dashboard) => (d.panels ?? []).flatMap((p) => (p.type === 'row' && p.panels ? [p, ...p.panels] : [p]));
+
+/** What changing `before` into `after` does, panel by panel (matched by id), for a person to check. */
+export function documentChanges(before: Dashboard, after: Dashboard): DocumentChanges {
+  const labels: [keyof Dashboard, string][] = [['kind', 'kind'], ['title', 'title'], ['description', 'description'], ['time', 'time range'], ['templating', 'variables'], ['timezone', 'time zone'], ['refresh', 'refresh']];
+  const document = labels.filter(([key]) => !same(before[key], after[key])).map(([, label]) => label);
+  const old = new Map(flat(before).map((p) => [p.id, p]));
+  const now = new Map(flat(after).map((p) => [p.id, p]));
+  const info = (p: Panel) => ({ id: p.id!, title: p.title || p.type, type: p.type });
+  const panels: PanelChange[] = [];
+  for (const p of flat(after)) {
+    const was = old.get(p.id);
+    if (!was) {
+      panels.push({ change: 'added', ...info(p), what: [] });
+      continue;
+    }
+    const what: string[] = [];
+    if (was.title !== p.title) what.push('title');
+    if (was.type !== p.type) what.push('type');
+    if (was.gridPos?.x !== p.gridPos?.x || was.gridPos?.y !== p.gridPos?.y) what.push('position');
+    if (was.gridPos?.w !== p.gridPos?.w || was.gridPos?.h !== p.gridPos?.h) what.push('size');
+    if (!same(was.options, p.options)) what.push('options');
+    if (!same(was.targets, p.targets) || !same(was.datasource, p.datasource) || !same(was.transformations, p.transformations)) what.push('queries');
+    if (!same(was.fieldConfig, p.fieldConfig)) what.push('field config');
+    const known = new Set(['id', 'title', 'type', 'gridPos', 'options', 'targets', 'datasource', 'transformations', 'fieldConfig', 'panels']);
+    const rest = (q: Panel) => Object.fromEntries(Object.entries(q).filter(([k]) => !known.has(k)).sort(([a], [b]) => a.localeCompare(b)));
+    if (!same(rest(was), rest(p))) what.push('other');
+    if (what.length) panels.push({ change: 'changed', ...info(p), what });
+  }
+  for (const p of flat(before)) if (!now.has(p.id)) panels.push({ change: 'removed', ...info(p), what: [] });
+  return { document, panels };
 }
