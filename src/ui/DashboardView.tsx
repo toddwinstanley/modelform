@@ -13,7 +13,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isInputPanel } from '../core/inputs';
+import { isInputGroup, isInputPanel, type InputPanel } from '../core/inputs';
 import { gridOffsetPx, gridUnitsToPx, layoutDashboard, GRID_COLUMNS, type LayoutMode, type LayoutSection } from '../core/layout';
 import { panelHasQueries } from '../core/datasource';
 import type { Panel } from '../core/schema';
@@ -22,6 +22,7 @@ import { useDashboard, usePanelData, usePanelLinks } from './context';
 import { LinkIcon } from './links';
 import { RenderBoundary } from './RenderBoundary';
 import { InputFormContext } from './inputs/formContext';
+import { InputGroupBody } from './inputs/InputGroup';
 import { InputPanelBody } from './inputs/InputPanels';
 import { panelComponent } from './panels/registry';
 import { useLayout } from './panels/common';
@@ -234,9 +235,10 @@ function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
   const theme = useDashTheme();
   const { dashboard, variables, variableInfo } = useDashboard();
   const { resolve, openLinks } = usePanelLinks(panel);
-  const input = isInputPanel(panel);
+  const group = isInputGroup(panel);
+  const input = isInputPanel(panel) || group;
   const form = useContext(InputFormContext);
-  const problem = input ? form?.problem?.(panel.options.metric) : undefined;
+  const problem = group ? form?.group?.(panel)?.problem : isInputPanel(panel) ? form?.problem?.(panel.options.metric) : undefined;
   const hasLinks = !!panel.links?.length;
   const hasTitle = !!panel.title || hasLinks || !!problem;
   const title = panel.title ? interpolate(panel.title, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
@@ -267,7 +269,7 @@ function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
       )}
       <View style={styles.body}>
         {deferred && !input ? null : input ? (
-          <InputPanelBody panel={panel} />
+          group ? <InputGroupBody panel={panel} /> : <InputPanelBody panel={panel as InputPanel} />
         ) : (
           <DataPanelBody panel={panel} width={width - 24} height={height - (hasTitle ? TITLE_H : 0) - 16} />
         )}

@@ -4,7 +4,7 @@
  * keyed by metric, so a renamed metric leaves the old entries behind).
  */
 import { findNodeAtLocation, parseTree } from 'jsonc-parser';
-import { inputPanels } from './inputs';
+import { isInputGroup, isInputPanel } from './inputs';
 import { applyJsonEdits, type JsonEdit } from './jsonEdit';
 import type { AppManifest } from './manifest';
 import type { Dashboard } from './schema';
@@ -121,12 +121,17 @@ function parse(text: string | null | undefined): Dashboard | undefined {
   }
 }
 
-/** Input panels by panel id, with the metric each records. */
-function inputs(text: string | null | undefined): Map<number, { metric: string; title?: string }> {
+/** Inputs by panel id (a group's fields by "<group id>.<field index>"), with the metric each records. */
+function inputs(text: string | null | undefined): Map<string, { metric: string; title?: string }> {
   const d = parse(text);
-  const out = new Map<number, { metric: string; title?: string }>();
+  const out = new Map<string, { metric: string; title?: string }>();
   try {
-    if (d) for (const p of inputPanels(d)) if (typeof p.id === 'number' && typeof p.options?.metric === 'string') out.set(p.id, { metric: p.options.metric, title: p.title });
+    if (d)
+      for (const p of d.panels.flatMap((x) => (x.type === 'row' ? [x, ...(x.panels ?? [])] : [x]))) {
+        if (typeof p.id !== 'number') continue;
+        if (isInputGroup(p)) p.options.fields.forEach((f, i) => typeof f?.options?.metric === 'string' && out.set(`${p.id}.${i}`, { metric: f.options.metric, title: f.title }));
+        else if (isInputPanel(p)) out.set(String(p.id), { metric: p.options.metric, title: p.title });
+      }
   } catch {
     // A panel too broken to read (no type, say); the file's issues report it.
   }

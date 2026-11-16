@@ -15,7 +15,7 @@
  * A document is either a path (relative to the manifest's URL) or the dashboard inlined.
  */
 import { cleanDashboard, dashboardSchemaIssues, manifestSchemaIssues } from './configSchema';
-import { inputPanels } from './inputs';
+import { INPUT_GROUP, inputPanels, isInputPanel, isInputType } from './inputs';
 import { cleanPanelOptions } from './panelOptions';
 import type { Dashboard } from './schema';
 
@@ -143,10 +143,45 @@ export function prepareDashboard(json: unknown, file: string): { dashboard?: Das
   return {
     dashboard,
     issues: [
+      ...groupIssues(dashboard).map((r): ConfigIssue => ({ severity: 'warning', path: `${file}: ${r.path}`, message: r.message })),
       ...removed.map((r): ConfigIssue => ({ severity: 'warning', path: `${file}: ${r.path}`, message: `${r.message}, so it’s ignored` })),
       ...schemaWarnings(dashboard, file, []),
     ],
   };
+}
+
+/** What's wrong with the form's input-groups: no fields, fields that can't be in a group, metrics recorded twice, a titleFrom that isn't a field. */
+function groupIssues(dashboard: Dashboard): { path: string; message: string }[] {
+  const out: { path: string; message: string }[] = [];
+  const located = dashboard.panels.flatMap((p, i) => [
+    { p, at: `panels[${i}]` },
+    ...(p.type === 'row' ? (p.panels ?? []).map((c, j) => ({ p: c, at: `panels[${i}].panels[${j}]` })) : []),
+  ]);
+  const recordedAt = new Map<string, string>();
+  for (const { p, at } of located) if (isInputPanel(p) && !recordedAt.has(p.options.metric)) recordedAt.set(p.options.metric, at);
+  for (const { p, at } of located) {
+    if (p.type !== INPUT_GROUP) continue;
+    const fields: unknown = p.options?.fields;
+    if (!Array.isArray(fields) || !fields.length) {
+      out.push({ path: `${at}.options.fields`, message: 'a group needs at least one field' });
+      continue;
+    }
+    const mine: string[] = [];
+    fields.forEach((f: unknown, k) => {
+      const fat = `${at}.options.fields[${k}]`;
+      if (!isObject(f) || typeof f.type !== 'string' || !isInputType(f.type)) return out.push({ path: `${fat}.type`, message: 'must be an input-* type' });
+      if (f.type === 'input-counter') return out.push({ path: `${fat}.type`, message: 'counters record on tap, so they can’t be in a group' });
+      const metric = isObject(f.options) ? f.options.metric : undefined;
+      if (typeof metric !== 'string' || !metric) return out.push({ path: `${fat}.options.metric`, message: 'is required' });
+      const other = recordedAt.get(metric);
+      if (other) out.push({ path: `${fat}.options.metric`, message: `"${metric}" is also recorded by ${other}` });
+      else recordedAt.set(metric, fat);
+      mine.push(metric);
+    });
+    const titleFrom = p.options?.titleFrom;
+    if (titleFrom !== undefined && !mine.includes(titleFrom)) out.push({ path: `${at}.options.titleFrom`, message: `must be the metric of one of the group’s fields` });
+  }
+  return out;
 }
 
 /**
@@ -159,7 +194,7 @@ function panelProblem(p: unknown): { at: string; message: string; summary: strin
   const g = p.gridPos;
   if (!isObject(g) || !['x', 'y', 'w', 'h'].every((k) => typeof g[k] === 'number'))
     return { at: '.gridPos', message: 'must have numeric x, y, w and h', summary: 'has no usable gridPos' };
-  if (p.type.startsWith('input-') && !nonEmptyString((p.options as Record<string, unknown>)?.metric)) {
+  if (p.type.startsWith('input-') && p.type !== INPUT_GROUP && !nonEmptyString((p.options as Record<string, unknown>)?.metric)) {
     const message = `${p.type} needs a metric to record to`;
     return { at: '.options.metric', message, summary: message };
   }

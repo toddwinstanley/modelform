@@ -77,7 +77,27 @@ import form from './forms/daily.json';
 }
 ```
 
-For anything beyond a demo, implement `EntryStore` over your own storage, such as SQLite.
+Fields that repeat once per item, like the sets of a workout, go in an `input-group`. Each field records under its own
+metric, and entries of one item share `save` and `item`:
+
+```json
+{
+  "type": "input-group",
+  "title": "Sets",
+  "gridPos": { "x": 0, "y": 3, "w": 24, "h": 12 },
+  "options": {
+    "itemTitle": "Set", "titleFrom": "sets-exercise", "start": "last",
+    "fields": [
+      { "type": "input-text", "title": "Exercise", "options": { "metric": "sets-exercise", "suggest": true, "required": true } },
+      { "type": "input-number", "title": "Weight", "span": 12, "options": { "metric": "sets-weight", "unit": "kg", "step": 2.5 } },
+      { "type": "input-number", "title": "Reps", "span": 12, "options": { "metric": "sets-reps" } }
+    ]
+  }
+}
+```
+
+For anything beyond a demo, implement `EntryStore` over your own storage, such as SQLite. Keep each entry's `save` and
+`item` so groups can be read back.
 
 ## Bundled dashboards
 
