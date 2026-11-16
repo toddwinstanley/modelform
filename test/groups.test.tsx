@@ -9,9 +9,11 @@ import {
   groupToEntries,
   InputForm,
   inputPanels,
+  LocalDataSource,
   MemoryEntryStore,
   prepareDashboard,
   renameMetrics,
+  sampleEntries,
   type Dashboard,
   type Entry,
   type InputGroupPanel,
@@ -69,6 +71,40 @@ describe('input-group entries', () => {
     const e = (metric: string, text: string, save: string): Entry => ({ id: metric + save, metric, ts: 5, value: null, text, save });
     const all = [e('track', 'Spa', 'a'), e('config', 'GP', 'a'), e('track', 'Monza', 'b'), e('config', 'Junior', 'b')];
     expect(entriesSavedWith(all, 'config', 'track', 'Monza').map((x) => x.text)).toEqual(['Junior']);
+  });
+});
+
+describe('charting input-group data', () => {
+  const DAY = 86_400_000;
+  const range = { from: 0, to: 3 * DAY };
+  const seed = () =>
+    new MemoryEntryStore([
+      ...groupToEntries(sets(), [{ exercise: 'Squat', weight: 100, reps: 5 }, { exercise: 'Bench', weight: 60, reps: 8 }, { exercise: 'Squat', weight: 110, reps: 3 }], 1000, 'monday'),
+      ...groupToEntries(sets(), [{ exercise: 'Bench', weight: 65, reps: 6 }], DAY + 1000, 'tuesday'),
+      // Recorded before saves had ids: siblings are found by time instead.
+      { metric: 'exercise', ts: 2 * DAY, value: null, text: 'Row' },
+      { metric: 'weight', ts: 2 * DAY, value: 50, text: null },
+    ]);
+  const query = (target: object) => new LocalDataSource(seed()).query({ targets: [{ refId: 'A', ...target }], range, intervalMs: DAY } as never);
+
+  it('makes one series per value of another field of the same item', async () => {
+    const frames = await query({ metric: 'weight', aggregate: 'max', bucket: '1d', fillZero: false, groupBy: { field: 'exercise' } });
+    const series = Object.fromEntries(frames.map((f) => [f.fields[1].config?.displayName, f.fields[1].values]));
+    expect(series).toEqual({ Squat: [110], Bench: [60, 65], Row: [50] });
+    expect(frames[0].fields[1].labels).toEqual({ exercise: 'Squat' });
+  });
+
+  it('makes one point per save', async () => {
+    const [frame] = await query({ metric: 'reps', aggregate: 'sum', bucket: 'save' });
+    expect(frame.fields[0].values).toEqual([1000, DAY + 1000]);
+    expect(frame.fields[1].values).toEqual([16, 6]);
+  });
+
+  it('samples a group’s fields together, so splitting by one works in previews', async () => {
+    const entries = sampleEntries([form(sets())], [], 30 * DAY, 30);
+    const weights = entries.filter((e) => e.metric === 'weight');
+    expect(weights.length).toBeGreaterThan(0);
+    expect(weights.every((w) => entries.some((e) => e.metric === 'exercise' && e.save === w.save && e.item === w.item))).toBe(true);
   });
 });
 

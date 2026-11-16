@@ -3,7 +3,7 @@
  * values shaped by the input that records it (choices for a select, whole stars for a rating,
  * the slider's range, and so on), the same every time for the same metric.
  */
-import { inputPanels, type InputChoice, type NewEntry } from './inputs';
+import { groupFields, inputGroups, inputPanels, type InputChoice, type NewEntry } from './inputs';
 import type { Dashboard } from './schema';
 
 const DAY = 86_400_000;
@@ -80,7 +80,28 @@ export function sampleEntries(forms: Dashboard[], metrics: Iterable<string>, now
   const makers = new Map<string, Maker>();
   for (const form of forms) for (const p of inputPanels(form)) if (!makers.has(p.options.metric)) makers.set(p.options.metric, maker(p.type, p.options as unknown as Record<string, unknown>));
   const out: NewEntry[] = [];
+  // A group's fields are recorded together: a few items a day, each field of an item sharing its save and position.
+  const grouped = new Set<string>();
+  for (const form of forms)
+    for (const g of inputGroups(form)) {
+      const fields = groupFields(g).filter((f) => !grouped.has(f.options.metric));
+      if (!fields.length) continue;
+      fields.forEach((f) => grouped.add(f.options.metric));
+      const next = random(fields.map((f) => f.options.metric).join('|'));
+      for (let d = days - 1; d >= 0; d--) {
+        if (next() < 0.2) continue;
+        const ts = Math.min(now, Math.floor(now / DAY - d) * DAY + (7 + next() * 14) * 3_600_000);
+        const save = `sample-${fields[0].options.metric}-${d}`;
+        const items = 1 + Math.floor(next() * 4);
+        for (let item = 0; item < items; item++)
+          for (const f of fields) {
+            const [e] = makers.get(f.options.metric)!(next, d);
+            if (e) out.push({ metric: f.options.metric, ts, ...e, save, item });
+          }
+      }
+    }
   for (const metric of new Set([...metrics, ...makers.keys()])) {
+    if (grouped.has(metric)) continue;
     const next = random(metric);
     const make = makers.get(metric) ?? walk(40, 80);
     for (let d = days - 1; d >= 0; d--) {
