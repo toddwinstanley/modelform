@@ -1,5 +1,11 @@
 # @modelform/react-native
 
+## 0.11.0
+
+### Minor Changes
+
+- 8ad052b: Changing one form or dashboard with an AI assistant. `documentPrompt(request, document, { recorded })` asks for the whole changed document back, with the document guide (`DOCUMENT_GUIDE`, now also part of `AUTHORING_GUIDE`); `readDocumentAnswer(text, kind)` reads it (a bare document or a one-document template), refuses the wrong kind (going by inputs when the answer leaves `kind` out), and lists warnings; `fixDocumentPrompt(problems, kind)` asks for fixes; `documentChanges(before, after)` lists the panels added, removed and changed (by id, inside rows too) and the document settings that changed.
+
 ## 0.10.0
 
 ### Minor Changes
