@@ -10,7 +10,7 @@
  * pointed at ones the config already records, and its tabs are added only if asked for.
  */
 import { applyJsonEdits, type JsonEdit } from './jsonEdit';
-import { inputPanels } from './inputs';
+import { documentKind, inputPanels } from './inputs';
 import { prepareDashboard, type AppManifest, type Screen, type Tab } from './manifest';
 import { screenDocuments, tabIdFor } from './navigation';
 import type { Dashboard } from './schema';
@@ -66,7 +66,7 @@ export function makeTemplate(
 ): AppTemplate {
   const docs: TemplateDocument[] = ids
     .filter((id) => documents[id])
-    .map((id) => ({ kind: inputPanels(documents[id]).length ? 'form' : 'dashboard', id, dashboard: structuredClone(documents[id]) }));
+    .map((id) => ({ kind: documentKind(documents[id]), id, dashboard: structuredClone(documents[id]) }));
   return {
     $modelform: 'template',
     version: TEMPLATE_VERSION,
@@ -102,6 +102,7 @@ export function parseTemplate(text: string): { template: AppTemplate } | { error
     seen.add(d.id);
     const { dashboard, issues } = prepareDashboard(d.dashboard, d.id);
     if (!dashboard) return { error: `"${d.id}" can’t be shown: ${issues.find((x) => x.severity === 'error')?.message ?? 'it isn’t a dashboard'}` };
+    if (dashboard.kind && dashboard.kind !== d.kind) return { error: `"${d.id}" is listed as a ${d.kind} but says it’s a ${dashboard.kind}` };
     documents.push({ kind: d.kind, id: d.id, dashboard });
   }
   const tabs = Array.isArray(json.tabs)
@@ -219,7 +220,9 @@ export function applyTemplate(manifestText: string, paths: Iterable<string>, tem
     taken.add(id);
     files.add(path);
     ids[doc.id] = id;
-    const dashboard = options.metrics ? { ...doc.dashboard, panels: renameMetrics(doc.dashboard.panels ?? [], options.metrics) } : doc.dashboard;
+    // The new file states its kind, so the editor never has to guess it.
+    const { kind: _kind, ...rest } = doc.dashboard;
+    const dashboard = { kind: doc.kind, ...rest, ...(options.metrics && { panels: renameMetrics(doc.dashboard.panels ?? [], options.metrics) }) };
     out[path] = JSON.stringify(dashboard, null, 2) + '\n';
     if (manifest.documents) edits.push({ path: ['documents', id], value: path });
     else {

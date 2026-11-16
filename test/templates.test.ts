@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTemplate, makeTemplate, parseTemplate, templateNeeds, type AppManifest, type AppTemplate, type Dashboard } from '../src/core';
+import { applyTemplate, documentKind, makeTemplate, newDocument, parseTemplate, templateNeeds, validateBundle, type AppManifest, type AppTemplate, type Dashboard } from '../src/core';
 
 const workout: Dashboard = {
   title: 'Workout',
@@ -97,6 +97,41 @@ describe('templateNeeds', () => {
   });
 });
 
+describe('document kinds', () => {
+  const input = { id: 1, type: 'input-number', title: 'Weight', gridPos: { x: 0, y: 0, w: 24, h: 3 }, options: { metric: 'weight' } };
+
+  it('documentKind uses a stated kind, else guesses from inputs', () => {
+    expect(documentKind({ kind: 'form', title: 'F', panels: [] })).toBe('form');
+    expect(documentKind({ kind: 'dashboard', title: 'D', panels: [input] })).toBe('dashboard');
+    expect(documentKind({ title: 'F', panels: [input] })).toBe('form');
+    expect(documentKind({ title: 'D', panels: [] })).toBe('dashboard');
+    expect(documentKind({ kind: 'Dashboard' as never, title: 'Grafana v2', panels: [] })).toBe('dashboard');
+  });
+
+  it('newDocument states its kind', () => {
+    expect(JSON.parse(newDocument('form', 'F')).kind).toBe('form');
+    expect(JSON.parse(newDocument('dashboard', 'D')).kind).toBe('dashboard');
+  });
+
+  it('validateBundle warns when a screen shows a document as the other kind', () => {
+    const issues = validateBundle({
+      manifest: { version: 1, title: 'A', documents: {}, tabs: [{ id: 't', title: 'T', screen: { type: 'forms', forms: ['d'] } }] } as AppManifest,
+      documents: { d: { kind: 'dashboard', title: 'D', panels: [] } },
+    });
+    expect(issues).toContainEqual({ severity: 'warning', path: 'manifest: tabs[0].screen.forms[0]', message: '"d" is a dashboard, shown here as a form' });
+  });
+
+  it('makeTemplate keeps a stated kind, even for a form with no inputs yet', () => {
+    const empty = { kind: 'form' as const, title: 'Empty', panels: [] };
+    expect(makeTemplate(manifest, { empty }, ['empty'], { title: 'T' }).documents[0].kind).toBe('form');
+  });
+
+  it('parseTemplate refuses a document that contradicts its listing', () => {
+    const text = JSON.stringify({ $modelform: 'template', version: 1, title: 'T', documents: [{ kind: 'form', id: 'a', dashboard: { kind: 'dashboard', title: 'A', panels: [] } }] });
+    expect(parseTemplate(text)).toEqual({ error: '"a" is listed as a form but says it’s a dashboard' });
+  });
+});
+
 describe('applyTemplate', () => {
   const t: AppTemplate = makeTemplate(manifest, documents, ['workout', 'progress'], { title: 'T' });
   const text = JSON.stringify({ version: 1, title: 'Other', tabs: [{ id: 'progress', title: 'Home', screen: { type: 'forms', forms: ['workout'] } }], documents: { workout: 'forms/workout.json' } }, null, 2);
@@ -105,7 +140,9 @@ describe('applyTemplate', () => {
     const out = applyTemplate(text, ['app.json', 'forms/workout.json'], t);
     expect(out.ids).toEqual({ workout: 'workout-2', progress: 'progress' });
     expect(Object.keys(out.files)).toEqual(['forms/workout-2.json', 'dashboards/progress.json']);
-    expect(JSON.parse(out.files['dashboards/progress.json'])).toEqual(progress);
+    // Each file states its kind, first.
+    expect(JSON.parse(out.files['dashboards/progress.json'])).toEqual({ kind: 'dashboard', ...progress });
+    expect(Object.keys(JSON.parse(out.files['forms/workout-2.json']))[0]).toBe('kind');
     expect(JSON.parse(out.manifest).documents).toEqual({ workout: 'forms/workout.json', 'workout-2': 'forms/workout-2.json', progress: 'dashboards/progress.json' });
     expect(out.tabs).toEqual([]);
   });

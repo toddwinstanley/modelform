@@ -250,7 +250,10 @@ function references(manifest: AppManifest) {
   return refs;
 }
 
-/** Cross-checks a loaded bundle: screens must point at documents that exist, and forms must have inputs. */
+/**
+ * Cross-checks a loaded bundle: screens must point at documents that exist, forms must have inputs,
+ * and a document that states its kind is shown as that kind.
+ */
 export function validateBundle(bundle: ConfigBundle, file = 'manifest'): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   for (const ref of references(bundle.manifest)) {
@@ -258,6 +261,8 @@ export function validateBundle(bundle: ConfigBundle, file = 'manifest'): ConfigI
     // Listed but failed to load: that failure is already reported.
     if (!doc && ref.id in bundle.manifest.documents) continue;
     if (!doc) issues.push({ severity: 'error', path: `${file}: ${ref.path}`, message: `no document "${ref.id}" in documents` });
+    else if (doc.kind && doc.kind !== ref.kind)
+      issues.push({ severity: 'warning', path: `${file}: ${ref.path}`, message: `"${ref.id}" is a ${doc.kind}, shown here as a ${ref.kind}` });
     else if (ref.kind === 'form' && !inputPanels(doc).length)
       issues.push({ severity: 'warning', path: `${file}: ${ref.path}`, message: `"${ref.id}" has no input-* panels to fill in` });
   }

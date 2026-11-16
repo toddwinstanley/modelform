@@ -1,4 +1,4 @@
-import type { Dashboard, Panel } from './schema';
+import type { Dashboard, DocumentKind, Panel } from './schema';
 
 /**
  * Input forms reuse the dashboard format: a form is a dashboard whose panels have
@@ -143,6 +143,15 @@ const panelsOf = (dashboard: Dashboard) => dashboard.panels.flatMap((p) => (p.ty
 /** Every input that records, groups' fields included. */
 export function inputPanels(dashboard: Dashboard): InputPanel[] {
   return panelsOf(dashboard).flatMap((p) => (isInputGroup(p) ? groupFields(p) : isInputPanel(p) ? [p] : []));
+}
+
+/**
+ * Whether a document is a form or a dashboard: its `kind` when it states one, otherwise a form
+ * if it has inputs. Prefer stating `kind`: a guess changes when a form's last input is removed.
+ */
+export function documentKind(dashboard: Partial<Dashboard>): DocumentKind {
+  if (dashboard.kind === 'form' || dashboard.kind === 'dashboard') return dashboard.kind;
+  return Array.isArray(dashboard.panels) && inputPanels(dashboard as Dashboard).length ? 'form' : 'dashboard';
 }
 
 /** The form's input-group panels. */
