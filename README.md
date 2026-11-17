@@ -13,7 +13,8 @@ same format. One JSON model describes both what an app records and how it charts
 - **Datasources:** a local one over recorded entries, and a Grafana one that runs panel queries through a Grafana
   instance's HTTP API. You can also implement your own.
 - **Configs:** a manifest format for whole apps (tabs, forms and dashboards), with JSON Schemas, validation that
-  reports issues instead of throwing, and a loader with caching and last-good fallback.
+  reports issues instead of throwing, and a loader with caching and last-good fallback. A manifest's `version` is the
+  oldest format that can show it; an app older than that gets `needsUpdate` and keeps its last good config.
 - **AI assistants:** `templatePrompt()` writes a prompt for making a template with any assistant (Claude, ChatGPT…),
   and `readTemplateAnswer()` reads the template back out of its reply. `documentPrompt()` and `readDocumentAnswer()` do
   the same for changing one form or dashboard, and `documentChanges()` lists what a change does. Nothing calls a model.

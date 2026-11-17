@@ -79,8 +79,6 @@ function appSchema() {
   const schema = generate('manifest.ts', 'AppManifest', false);
   // Inline documents are dashboards, checked loosely by the dashboard schema.
   schema.definitions.Dashboard = { $ref: DASHBOARD_ID };
-  schema.definitions.AppManifest.properties.version = { ...schema.definitions.AppManifest.properties.version, const: 1 };
-  delete schema.definitions.AppManifest.properties.version.type;
   return prune({ $schema: schema.$schema, $id: APP_ID, title: 'modelform app config', ...schema });
 }
 

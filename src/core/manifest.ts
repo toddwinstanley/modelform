@@ -19,11 +19,32 @@ import { INPUT_GROUP, inputPanels, isInputPanel, isInputType } from './inputs';
 import { cleanPanelOptions } from './panelOptions';
 import type { Dashboard } from './schema';
 
+/**
+ * The newest config format this build can show. A manifest's `version` is the oldest format that
+ * can show it, so an app older than the config says to update rather than show it wrong.
+ *
+ * When a change means older apps would show a config wrong (a new panel or screen type, an
+ * option whose absence changes what's recorded), bump this and add a FORMAT_CHANGES entry that
+ * spots configs using it. Configs that don't use it keep working in older apps.
+ */
 export const MANIFEST_VERSION = 1;
+
+/** Format changes, each with the version that brought it and how to tell a config uses it. None since version 1. */
+const FORMAT_CHANGES: { version: number; what: string; uses(bundle: ConfigBundle): boolean }[] = [];
+
+/** The version a config should declare: the newest format change it uses, or 1. Editors set it when saving. */
+export function requiredManifestVersion(bundle: ConfigBundle): number {
+  return Math.max(1, ...FORMAT_CHANGES.filter((c) => c.uses(bundle)).map((c) => c.version));
+}
 
 /** The root of an app config: navigation, plus the documents it shows. Annotations here feed schema/app.schema.json. */
 export interface AppManifest {
-  /** Format version. Always 1 for now. */
+  /**
+   * The oldest config format that can show this config: 1 unless it uses something newer (see
+   * MANIFEST_VERSION). An app that reads only older formats asks to be updated instead.
+   * @minimum 1
+   * @asType integer
+   */
   version: number;
   /**
    * The app's name.
@@ -82,6 +103,8 @@ export interface ConfigBundle {
 
 export interface ConfigIssue {
   severity: 'error' | 'warning';
+  /** Set on the error for a config newer than this build can show, so an app can ask to be updated. */
+  code?: 'newer-version';
   /** Where in the config, e.g. `app.json: tabs[1].screen.dashboard` or `forms/daily.json: panels[3]`. */
   path: string;
   message: string;
@@ -97,6 +120,9 @@ const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.t
  */
 export function validateManifest(json: unknown, file = 'manifest'): ConfigIssue[] {
   const error = (path: string, message: string): ConfigIssue => ({ severity: 'error', path: `${file}: ${path}`, message });
+  // A newer format may have changed anything else, so this is the only thing worth saying about it.
+  if (isObject(json) && typeof json.version === 'number' && json.version > MANIFEST_VERSION)
+    return [{ ...error('version', `needs config format ${json.version}, and this app shows up to ${MANIFEST_VERSION}. Update the app to open it.`), code: 'newer-version' }];
   const shape = manifestSchemaIssues(json).filter((i) => !/^documents\.[^.[]+[.[]/.test(i.path));
   if (shape.length) return shape.map((i) => error(i.path, i.message));
   const issues: ConfigIssue[] = [];
@@ -504,6 +530,8 @@ export interface ConfigState {
   error?: string;
   /** True when the last fetch failed because the config couldn't be fetched at all, not because it has errors. */
   unreachable?: boolean;
+  /** True when the last fetch got a config newer than this app can show: the app should ask to be updated. */
+  needsUpdate?: boolean;
   /** From the last fetch, good or bad. */
   issues: ConfigIssue[];
 }
@@ -590,10 +618,15 @@ export class ConfigLoader {
         const { bundle, issues, revision, unreachable } = result;
         if (!bundle) {
           const errors = issues.filter((i) => i.severity === 'error').length;
-          const error = unreachable ? issues[0]?.message : errors === 1 ? '1 error' : `${errors} errors`;
+          const needsUpdate = issues.some((i) => i.code === 'newer-version');
+          const error = unreachable ? issues[0]?.message : needsUpdate ? 'a newer format' : errors === 1 ? '1 error' : `${errors} errors`;
           return this.set(
-            { loading: false, error, unreachable: !!unreachable, issues },
-            this.snapshot.loading || error !== this.snapshot.error || !!unreachable !== !!this.snapshot.unreachable || !sameIssues(issues, this.snapshot.issues),
+            { loading: false, error, unreachable: !!unreachable, needsUpdate, issues },
+            this.snapshot.loading ||
+              error !== this.snapshot.error ||
+              !!unreachable !== !!this.snapshot.unreachable ||
+              needsUpdate !== !!this.snapshot.needsUpdate ||
+              !sameIssues(issues, this.snapshot.issues),
           );
         }
         const json = JSON.stringify(bundle);
@@ -602,11 +635,12 @@ export class ConfigLoader {
         const fetchedAt = Date.now();
         if (changed || revision !== this.snapshot.revision) cache?.write({ url, fetchedAt, bundle, revision }).catch(() => {});
         this.set(
-          { ...(changed && { bundle }), source: 'remote', fetchedAt, revision, loading: false, error: undefined, unreachable: undefined, issues },
+          { ...(changed && { bundle }), source: 'remote', fetchedAt, revision, loading: false, error: undefined, unreachable: undefined, needsUpdate: undefined, issues },
           changed ||
             revision !== this.snapshot.revision ||
             this.snapshot.source !== 'remote' ||
             !!this.snapshot.error ||
+            !!this.snapshot.needsUpdate ||
             this.snapshot.loading ||
             !sameIssues(issues, this.snapshot.issues),
         );
