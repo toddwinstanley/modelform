@@ -6,6 +6,8 @@ import {
   BUNDLE_TYPE,
   ConfigLoader,
   fetchBundle,
+  MANIFEST_VERSION,
+  requiredManifestVersion,
   httpFetchJson,
   prepareDashboard,
   resolveUrl,
@@ -57,7 +59,7 @@ describe('validateManifest', () => {
 
   it('reports each problem with a path', () => {
     const bad = {
-      version: 2,
+      version: 0,
       title: '',
       documents: { a: 5 },
       tabs: [
@@ -74,7 +76,7 @@ describe('validateManifest', () => {
       'app.json: tabs[1].screen.forms must not be empty',
       'app.json: tabs[2].screen.type must be "dashboard", "forms" or "menu"',
       'app.json: title must not be empty',
-      'app.json: version must be 1',
+      'app.json: version must be >= 1',
     ]);
   });
 
@@ -92,6 +94,19 @@ describe('validateManifest', () => {
 
   it('leaves inline documents to the dashboard checks', () => {
     expect(validateManifest({ ...manifest, documents: { daily: { title: 'X', panels: 'no' } } })).toEqual([]);
+  });
+});
+
+describe('manifest versions', () => {
+  it('reads versions up to its own, as whole numbers from 1', () => {
+    expect(validateManifest({ ...manifest, version: MANIFEST_VERSION })).toEqual([]);
+    expect(validateManifest({ ...manifest, version: MANIFEST_VERSION + 1 })).toMatchObject([{ code: 'newer-version' }]);
+    expect(validateManifest({ ...manifest, version: 0 })).toMatchObject([{ path: 'manifest: version' }]);
+    expect(validateManifest({ ...manifest, version: 1.5 })).toMatchObject([{ path: 'manifest: version' }]);
+  });
+
+  it('a config needs version 1 until it uses a later format change', () => {
+    expect(requiredManifestVersion({ manifest: manifest as ConfigBundle['manifest'], documents: { daily: form, charts } as ConfigBundle['documents'] })).toBe(1);
   });
 });
 
@@ -227,6 +242,29 @@ describe('ConfigLoader', () => {
     expect(loader.state.bundle?.manifest.title).toBe('Test');
     expect(loader.state.error).toBe('1 error');
     expect(loader.state.issues[0]).toMatchObject({ path: 'app.json: tabs', message: 'must not be empty' });
+  });
+
+  it('asks for an update when a config is newer than this app, keeping the last good one', async () => {
+    let live: Record<string, unknown> = files;
+    const loader = new ConfigLoader({ url: BASE, fetchJson: (url) => server(live)(url) });
+    await loader.start();
+    // A newer format may have changed anything, including what's broken here: only the version is reported.
+    live = { ...files, [BASE]: { ...manifest, version: MANIFEST_VERSION + 1, tabs: 'not even tabs' } };
+    await loader.refresh();
+    expect(loader.state).toMatchObject({ needsUpdate: true, error: 'a newer format', source: 'remote' });
+    expect(loader.state.bundle?.manifest.title).toBe('Test');
+    expect(loader.state.issues).toEqual([
+      {
+        severity: 'error',
+        code: 'newer-version',
+        path: 'app.json: version',
+        message: `needs config format ${MANIFEST_VERSION + 1}, and this app shows up to ${MANIFEST_VERSION}. Update the app to open it.`,
+      },
+    ]);
+    live = files;
+    await loader.refresh();
+    expect(loader.state.needsUpdate).toBeUndefined();
+    expect(loader.state.error).toBeUndefined();
   });
 
   const cachedBundle = (title = 'Cached'): ConfigBundle => ({

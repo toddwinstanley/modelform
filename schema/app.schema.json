@@ -8,8 +8,9 @@
       "type": "object",
       "properties": {
         "version": {
-          "description": "Format version. Always 1 for now.",
-          "const": 1
+          "type": "integer",
+          "description": "The oldest config format that can show this config: 1 unless it uses something newer (see MANIFEST_VERSION). An app that reads only older formats asks to be updated instead.",
+          "minimum": 1
         },
         "title": {
           "type": "string",
