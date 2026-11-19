@@ -5,6 +5,7 @@ import { startOf } from '../../core/time';
 import { Chip } from '../Toolbar';
 import { useDashTheme } from '../theme';
 import { useLayout } from '../panels/common';
+import { DictationHint, MicButton, useDictation } from './Dictation';
 import { useInputForm } from './formContext';
 
 interface InputProps {
@@ -68,30 +69,35 @@ function NumberInput({ panel, value, onChange }: InputProps) {
     const base = typeof value === 'number' ? value : Number(text) || 0;
     onChange(Number(clamp(base + dir * step).toFixed(decimalsOf(step))));
   };
+  const dictation = useDictation(panel, value, onChange);
 
   return (
-    <View style={[styles.numberRow, compact && styles.numberRowCompact]} onLayout={onLayout}>
-      <StepButton label="−" onPress={() => bump(-1)} compact={compact} />
-      <View style={[styles.numberField, compact && styles.numberFieldCompact, { borderColor: theme.border }]}>
-        <TextInput
-          value={text}
-          onChangeText={(t) => {
-            setText(t);
-            const n = Number(t.replace(',', '.'));
-            if (t.trim() && !Number.isNaN(n)) onChange(clamp(integer ? Math.round(n) : n));
-            else if (!t.trim()) onChange(null);
-          }}
-          keyboardType={keyboardType}
-          placeholder={placeholder ?? '—'}
-          placeholderTextColor={theme.textMuted}
-          style={[styles.numberText, compact && styles.numberTextCompact, { color: theme.text }]}
-          accessibilityLabel={unit ? `${panel.title} (${unit})` : panel.title}
-          selectTextOnFocus
-        />
-        {/* Too narrow for the unit and the value; put the unit in the panel title instead. */}
-        {unit && !compact ? <Text style={[styles.unit, { color: theme.textMuted }]}>{unit}</Text> : null}
+    <View style={styles.dictated}>
+      <View style={[styles.numberRow, compact && styles.numberRowCompact]} onLayout={onLayout}>
+        <StepButton label="−" onPress={() => bump(-1)} compact={compact} />
+        <View style={[styles.numberField, compact && styles.numberFieldCompact, { borderColor: theme.border }]}>
+          <TextInput
+            value={text}
+            onChangeText={(t) => {
+              setText(t);
+              const n = Number(t.replace(',', '.'));
+              if (t.trim() && !Number.isNaN(n)) onChange(clamp(integer ? Math.round(n) : n));
+              else if (!t.trim()) onChange(null);
+            }}
+            keyboardType={keyboardType}
+            placeholder={placeholder ?? '—'}
+            placeholderTextColor={theme.textMuted}
+            style={[styles.numberText, compact && styles.numberTextCompact, { color: theme.text }]}
+            accessibilityLabel={unit ? `${panel.title} (${unit})` : panel.title}
+            selectTextOnFocus
+          />
+          {/* Too narrow for the unit and the value; put the unit in the panel title instead. */}
+          {unit && !compact ? <Text style={[styles.unit, { color: theme.textMuted }]}>{unit}</Text> : null}
+          <MicButton dictation={dictation} title={panel.title} size={compact ? 24 : 28} />
+        </View>
+        <StepButton label="+" onPress={() => bump(1)} compact={compact} />
       </View>
-      <StepButton label="+" onPress={() => bump(1)} compact={compact} />
+      <DictationHint dictation={dictation} />
     </View>
   );
 }
@@ -110,26 +116,31 @@ function DurationInput({ panel, value, onChange }: InputProps) {
 
   const masked = digits ? maskClock(digits) : '';
   const invalid = !!digits && parseClockDigits(digits) == null;
+  const dictation = useDictation(panel, value, onChange);
 
   return (
-    <View style={[styles.numberField, { borderColor: invalid ? theme.danger : theme.border }]}>
-      <TextInput
-        value={masked}
-        onChangeText={(t) => {
-          const d = t.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
-          setDigits(d);
-          onChange(parseClockDigits(d));
-        }}
-        keyboardType="number-pad"
-        placeholder={panel.options.placeholder ?? '00:00.00'}
-        placeholderTextColor={theme.textMuted}
-        style={[styles.numberText, { color: invalid ? theme.danger : theme.text }]}
-        accessibilityLabel={panel.title}
-        accessibilityHint="Type the digits only, for example 13245 for 1 minute 32.45 seconds"
-        // Digits fill from the right, so keep the caret at the end; otherwise reformatting
-        // can leave the text selected and the next backspace clears everything.
-        selection={{ start: masked.length, end: masked.length }}
-      />
+    <View style={styles.dictated}>
+      <View style={[styles.numberField, { borderColor: invalid ? theme.danger : theme.border }]}>
+        <TextInput
+          value={masked}
+          onChangeText={(t) => {
+            const d = t.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
+            setDigits(d);
+            onChange(parseClockDigits(d));
+          }}
+          keyboardType="number-pad"
+          placeholder={panel.options.placeholder ?? '00:00.00'}
+          placeholderTextColor={theme.textMuted}
+          style={[styles.numberText, { color: invalid ? theme.danger : theme.text }]}
+          accessibilityLabel={panel.title}
+          accessibilityHint="Type the digits only, for example 13245 for 1 minute 32.45 seconds"
+          // Digits fill from the right, so keep the caret at the end; otherwise reformatting
+          // can leave the text selected and the next backspace clears everything.
+          selection={{ start: masked.length, end: masked.length }}
+        />
+        <MicButton dictation={dictation} title={panel.title} size={28} />
+      </View>
+      <DictationHint dictation={dictation} />
     </View>
   );
 }
@@ -238,24 +249,29 @@ function SelectInput({ panel, value, onChange }: InputProps) {
   const { choicesFrom, multi, placeholder } = panel.options;
   const choices = (choicesFrom ? form.choices[choicesFrom] : panel.options.choices) ?? [];
   const selected = Array.isArray(value) ? value : value == null ? [] : [value as string | number];
+  const dictation = useDictation(panel, value, onChange, choices);
   if (!choices.length && placeholder) return <Text style={{ color: theme.textMuted }}>{placeholder}</Text>;
   return (
-    <View style={styles.wrap}>
-      {choices.map((c) => {
-        const on = selected.includes(c.value);
-        return (
-          <Chip
-            key={String(c.value)}
-            label={c.label}
-            selected={on}
-            onPress={() => {
-              if (!multi) return onChange(on ? null : c.value);
-              const next = on ? selected.filter((s) => s !== c.value) : [...selected, c.value];
-              onChange(next.length ? next : null);
-            }}
-          />
-        );
-      })}
+    <View style={styles.selectWrap}>
+      <View style={styles.wrap}>
+        {choices.map((c) => {
+          const on = selected.includes(c.value);
+          return (
+            <Chip
+              key={String(c.value)}
+              label={c.label}
+              selected={on}
+              onPress={() => {
+                if (!multi) return onChange(on ? null : c.value);
+                const next = on ? selected.filter((s) => s !== c.value) : [...selected, c.value];
+                onChange(next.length ? next : null);
+              }}
+            />
+          );
+        })}
+        {choices.length > 0 && <MicButton dictation={dictation} title={panel.title} />}
+      </View>
+      <DictationHint dictation={dictation} />
     </View>
   );
 }
@@ -301,15 +317,27 @@ function RatingInput({ panel, value, onChange }: InputProps) {
 
 function FreeTextInput({ panel, value, onChange }: InputProps) {
   const theme = useDashTheme();
+  const dictation = useDictation(panel, value, onChange);
   return (
-    <TextInput
-      value={typeof value === 'string' ? value : ''}
-      onChangeText={(t) => onChange(t || null)}
-      placeholder={panel.options.placeholder ?? 'Type here'}
-      placeholderTextColor={theme.textMuted}
-      multiline
-      style={[styles.textArea, { color: theme.text, borderColor: theme.border }]}
-    />
+    <View style={styles.dictated}>
+      <View style={styles.fill}>
+        <TextInput
+          value={typeof value === 'string' ? value : ''}
+          onChangeText={(t) => onChange(t || null)}
+          placeholder={panel.options.placeholder ?? 'Type here'}
+          placeholderTextColor={theme.textMuted}
+          multiline
+          accessibilityLabel={panel.title}
+          style={[styles.textArea, dictation.available && styles.textAreaWithMic, { color: theme.text, borderColor: theme.border }]}
+        />
+        {dictation.available && (
+          <View style={styles.textAreaMic}>
+            <MicButton dictation={dictation} title={panel.title} size={28} />
+          </View>
+        )}
+      </View>
+      <DictationHint dictation={dictation} />
+    </View>
   );
 }
 
@@ -347,24 +375,32 @@ function SuggestTextInput({ panel, value, onChange }: InputProps) {
   const query = typed ? text : '';
   const fromScoped = textSuggestions(scoped, query);
   const suggestions = (fromScoped.length ? fromScoped : textSuggestions(own, query)).filter((s) => s.toLowerCase() !== text.trim().toLowerCase());
+  const dictation = useDictation(panel, value, (v) => {
+    setTyped(false);
+    onChange(v);
+  });
 
   return (
     <View style={styles.suggest}>
-      <TextInput
-        value={text}
-        onChangeText={(t) => {
-          setTyped(!!t);
-          onChange(t || null);
-        }}
-        placeholder={placeholder ?? 'Type here'}
-        placeholderTextColor={theme.textMuted}
-        style={[styles.textLine, { color: theme.text, borderColor: theme.border }]}
-        accessibilityLabel={panel.title}
-        autoCorrect={false}
-        autoCapitalize="words"
-        returnKeyType="done"
-        selectTextOnFocus
-      />
+      <View style={styles.lineRow}>
+        <TextInput
+          value={text}
+          onChangeText={(t) => {
+            setTyped(!!t);
+            onChange(t || null);
+          }}
+          placeholder={placeholder ?? 'Type here'}
+          placeholderTextColor={theme.textMuted}
+          style={[styles.textLine, { color: theme.text, borderColor: theme.border }]}
+          accessibilityLabel={panel.title}
+          autoCorrect={false}
+          autoCapitalize="words"
+          returnKeyType="done"
+          selectTextOnFocus
+        />
+        <MicButton dictation={dictation} title={panel.title} />
+      </View>
+      <DictationHint dictation={dictation} />
       <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wrap}>
         {suggestions.map((s) => (
           <Chip
@@ -419,6 +455,12 @@ function CounterInput({ panel }: { panel: InputPanel }) {
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  dictated: { flex: 1, gap: 4 },
+  selectWrap: { gap: 4 },
+  lineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  textAreaWithMic: { paddingRight: 44 },
+  textAreaMic: { position: 'absolute', top: 8, right: 8 },
   numberRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   numberField: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, height: 44 },
   // Android gives TextInput default padding that eats into narrow fields.
@@ -449,7 +491,7 @@ const styles = StyleSheet.create({
   rating: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   ratingDot: { flex: 1, maxWidth: 52, aspectRatio: 1, borderRadius: 26, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   suggest: { flex: 1, gap: 8 },
-  textLine: { height: 44, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 0, fontSize: 16 },
+  textLine: { flex: 1, height: 44, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 0, fontSize: 16 },
   textArea: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 15, textAlignVertical: 'top' },
   counter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   counterValue: { fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] },

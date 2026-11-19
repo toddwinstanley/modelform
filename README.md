@@ -109,6 +109,45 @@ metric, and entries of one item share `save` and `item`:
 For anything beyond a demo, implement `EntryStore` over your own storage, such as SQLite. Keep each entry's `save` and
 `item` so groups can be read back.
 
+### Dictation
+
+Number, duration, text and choice inputs show a microphone button when the form has a speech recognizer. What's said
+becomes the value ("seventy two point five" → 72.5, "went for a swim" picks Swim), and dictated text is added after a
+multi-line field's text. On the web, the browser's speech recognition is used where there is one (Chrome, Edge,
+Safari; not Firefox). On phones, pass a `SpeechRecognizer`, for example over
+[expo-speech-recognition](https://github.com/jamsch/expo-speech-recognition):
+
+```tsx
+import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
+import type { SpeechRecognizer } from '@modelform/react-native';
+
+const speech: SpeechRecognizer = {
+  start(o) {
+    const subs: { remove(): void }[] = [];
+    const end = () => {
+      subs.forEach((s) => s.remove());
+      o.onEnd();
+    };
+    ExpoSpeechRecognitionModule.requestPermissionsAsync().then(({ granted }) => {
+      if (!granted) return o.onError('Microphone access is off'), end();
+      subs.push(
+        ExpoSpeechRecognitionModule.addListener('result', (e) => o.onText(e.results[0]?.transcript ?? '', e.isFinal)),
+        ExpoSpeechRecognitionModule.addListener('error', (e) => e.error !== 'aborted' && o.onError(e.message)),
+        ExpoSpeechRecognitionModule.addListener('end', end),
+      );
+      ExpoSpeechRecognitionModule.start({ lang: o.lang ?? 'en-US', interimResults: true, contextualStrings: o.hints });
+    });
+    return { stop: () => ExpoSpeechRecognitionModule.stop(), abort: () => ExpoSpeechRecognitionModule.abort() };
+  },
+};
+
+<InputForm dashboard={form} store={store} speech={speech} />;
+```
+
+`speech={null}` turns dictation off. `spokenValue(panel, text)` and the parsers behind it are exported for filling
+forms by other means. The native recognizer is shared, so a real adapter should also wait for the previous session's
+`end` before starting the next one; otherwise that late event ends the new session too.
+
 ## Bundled dashboards
 
 `modelform dashboards [dir] [--watch]` writes an `index.ts` that imports every `.json` file in a folder, so

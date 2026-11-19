@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   entriesToItems,
   entryToInputValue,
@@ -25,6 +25,7 @@ import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';
 import { DashboardView } from '../DashboardView';
+import { webSpeechRecognizer, type SpeechRecognizer } from '../speech';
 import { useDashTheme } from '../theme';
 import { groupKey, InputFormContext, type FormGroup, type InputFormState } from './formContext';
 
@@ -53,10 +54,22 @@ export interface InputFormProps {
    * their timestamp in place of them.
    */
   editing?: Entry[];
+  /**
+   * Dictation for text, number, duration and choice inputs. On the web the browser's speech
+   * recognition is used by default where there is one; elsewhere pass a recognizer (an adapter
+   * over expo-speech-recognition, say). null turns dictation off.
+   */
+  speech?: SpeechRecognizer | null;
+  /** Language to dictate in (BCP-47); the recognizer's default when missing. */
+  speechLang?: string;
 }
 
 const NO_CHOICES: Record<string, InputChoice[]> = {};
 const NO_DEFAULTS: Record<string, InputValue> = {};
+
+/** The browser's recognizer, made once: a default for forms on the web. */
+let webSpeech: SpeechRecognizer | null | undefined;
+const defaultSpeech = () => (Platform.OS === 'web' ? (webSpeech ??= webSpeechRecognizer()) : null);
 
 /** The value each input had in `entries`, null where it had none. */
 function savedValues(panels: InputPanel[], entries: Entry[]): Record<string, InputValue> {
@@ -112,7 +125,8 @@ let nextItemKey = 1;
  * staged until Save, then recorded together at the chosen timestamp, along with any
  * `record: "always"` inputs. Counters record immediately on tap.
  */
-export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp, defaults: given = NO_DEFAULTS, beforeSave, editing }: InputFormProps) {
+export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp, defaults: given = NO_DEFAULTS, beforeSave, editing, speech: givenSpeech, speechLang }: InputFormProps) {
+  const speech = givenSpeech === undefined ? defaultSpeech() : givenSpeech;
   const theme = useDashTheme();
   const panels = useMemo(() => plainInputPanels(dashboard), [dashboard]);
   const groups = useMemo(() => inputGroups(dashboard), [dashboard]);
@@ -171,6 +185,8 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
       isDirty: (m) => m in edits,
       store,
       choices,
+      speech,
+      speechLang,
       problem: (m) => {
         const p = panels.find((x) => x.options.metric === m);
         return p && (checked || m in edits) ? inputProblem(p, value(m)) : undefined;
@@ -180,7 +196,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
         setGroupEdits((all) => ({ ...all, [groupKey(g)]: update(all[groupKey(g)] ?? base[groupKey(g)] ?? []) }));
       }),
     };
-  }, [edits, saved, defaults, given, store, choices, panels, checked, itemsOf, last, groupEdits, base]);
+  }, [edits, saved, defaults, given, store, choices, speech, speechLang, panels, checked, itemsOf, last, groupEdits, base]);
 
   const dirty = Object.keys(edits).length + groups.reduce((n, g) => n + groupChanges(base[groupKey(g)] ?? [], groupEdits[groupKey(g)]), 0);
 
