@@ -6,6 +6,7 @@ export { DashboardView, PanelCard, type DashboardViewProps } from './ui/Dashboar
 export { RenderBoundary } from './ui/RenderBoundary';
 export { DashboardToolbar, Chip } from './ui/Toolbar';
 export { InputForm, type InputFormProps } from './ui/inputs/InputForm';
+export { webSpeechRecognizer, type DictationOptions, type DictationSession, type SpeechRecognizer } from './ui/speech';
 export { Calendar } from './ui/TimeRangeSheet';
 export { groupKey, InputFormContext, useInputForm, type FormGroup, type InputFormState } from './ui/inputs/formContext';
 export { registerPanel } from './ui/panels/registry';

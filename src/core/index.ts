@@ -11,6 +11,7 @@ export * from './datasource';
 export * from './transform';
 export * from './grafana';
 export * from './inputs';
+export * from './speech';
 export * from './local';
 export * from './gazetteer';
 export * from './links';

@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import { groupFields, type GroupItem, type InputChoice, type InputGroupPanel, type InputValue } from '../../core/inputs';
 import type { EntryStore } from '../../core/local';
+import type { SpeechRecognizer } from '../speech';
 
 export interface InputFormState {
   value(metric: string): InputValue;
@@ -11,6 +12,10 @@ export interface InputFormState {
   choices: Record<string, InputChoice[]>;
   /** Why the input's value can't be saved, once that's worth showing. */
   problem?(metric: string): string | undefined;
+  /** Dictation for the inputs that take it; none means no microphone buttons. */
+  speech?: SpeechRecognizer | null;
+  /** Language to dictate in (BCP-47); the recognizer's default when missing. */
+  speechLang?: string;
   /** An input-group's items and what can be done to them. Missing outside an InputForm that supports groups. */
   group?(panel: InputGroupPanel): FormGroup;
 }
