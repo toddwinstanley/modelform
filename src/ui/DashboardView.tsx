@@ -240,15 +240,21 @@ function PanelCardContent({ panel, width, height, deferred }: PanelCardProps) {
   const form = useContext(InputFormContext);
   const problem = group ? form?.group?.(panel)?.problem : isInputPanel(panel) ? form?.problem?.(panel.options.metric) : undefined;
   const hasLinks = !!panel.links?.length;
-  const hasTitle = !!panel.title || hasLinks || !!problem;
+  const filled = !group && isInputPanel(panel) && !!form?.filled?.(panel.options.metric);
+  const hasTitle = !!panel.title || hasLinks || !!problem || filled;
   const title = panel.title ? interpolate(panel.title, { values: variables, info: variableInfo, scoped: panel.scopedVars, timezone: dashboard.timezone }) : '';
   return (
-    <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View style={[styles.card, { width, height, backgroundColor: theme.surface, borderColor: filled ? theme.accent : theme.border }, filled && { borderWidth: 2 }]}>
       {hasTitle && (
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
             {title}
           </Text>
+          {filled && !problem && (
+            <Text style={[styles.problem, { color: theme.accent }]} numberOfLines={1}>
+              From voice
+            </Text>
+          )}
           {!!problem && (
             <Text style={[styles.problem, { color: theme.danger }]} numberOfLines={1} accessibilityRole="alert">
               {problem}

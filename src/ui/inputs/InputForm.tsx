@@ -21,13 +21,16 @@ import {
   type InputValue,
   type NewEntry,
 } from '../../core/inputs';
+import { fillForm, ruleFiller, type FillResult, type FormFiller } from '../../core/formFill';
 import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';
 import { DashboardView } from '../DashboardView';
 import { webSpeechRecognizer, type SpeechRecognizer } from '../speech';
 import { useDashTheme } from '../theme';
+import { MicButton } from './Dictation';
 import { groupKey, InputFormContext, type FormGroup, type InputFormState } from './formContext';
+import { useVoiceFill } from './VoiceFill';
 
 export interface InputFormProps {
   dashboard: Dashboard;
@@ -62,6 +65,12 @@ export interface InputFormProps {
   speech?: SpeechRecognizer | null;
   /** Language to dictate in (BCP-47); the recognizer's default when missing. */
   speechLang?: string;
+  /**
+   * Fills the whole form from one thing said, with a microphone beside Save. What it fills is
+   * highlighted for review; nothing is recorded until Save. Default ruleFiller (no model); null
+   * turns it off. Needs `speech` too.
+   */
+  filler?: FormFiller | null;
 }
 
 const NO_CHOICES: Record<string, InputChoice[]> = {};
@@ -125,7 +134,7 @@ let nextItemKey = 1;
  * staged until Save, then recorded together at the chosen timestamp, along with any
  * `record: "always"` inputs. Counters record immediately on tap.
  */
-export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp, defaults: given = NO_DEFAULTS, beforeSave, editing, speech: givenSpeech, speechLang }: InputFormProps) {
+export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, header, timestamp, defaults: given = NO_DEFAULTS, beforeSave, editing, speech: givenSpeech, speechLang, filler = ruleFiller }: InputFormProps) {
   const speech = givenSpeech === undefined ? defaultSpeech() : givenSpeech;
   const theme = useDashTheme();
   const panels = useMemo(() => plainInputPanels(dashboard), [dashboard]);
@@ -141,6 +150,11 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
   const [status, setStatus] = useState<string | null>(null);
   // After a Save is refused, every problem shows; before it, only those of values being edited.
   const [checked, setChecked] = useState(false);
+  // Inputs the last voice fill set, highlighted until edited, saved or discarded.
+  const [filled, setFilled] = useState<Record<string, true>>({});
+  // The edits from before the last voice fill, while it can still be undone.
+  const [beforeFill, setBeforeFill] = useState<Record<string, InputValue> | null>(null);
+  const fillable = useMemo(() => fillForm(dashboard, choices), [dashboard, choices]);
 
   // Reloads as the store changes, so "last" follows each save.
   useEffect(() => {
@@ -181,8 +195,15 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
       setValue: (m, v) => {
         setStatus(null);
         setEdits((e) => ({ ...e, [m]: v }));
+        setFilled((f) => {
+          if (!(m in f)) return f;
+          const { [m]: _, ...rest } = f;
+          return rest;
+        });
+        setBeforeFill(null);
       },
       isDirty: (m) => m in edits,
+      filled: (m) => m in filled,
       store,
       choices,
       speech,
@@ -196,7 +217,33 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
         setGroupEdits((all) => ({ ...all, [groupKey(g)]: update(all[groupKey(g)] ?? base[groupKey(g)] ?? []) }));
       }),
     };
-  }, [edits, saved, defaults, given, store, choices, speech, speechLang, panels, checked, itemsOf, last, groupEdits, base]);
+  }, [edits, saved, defaults, given, store, choices, speech, speechLang, panels, checked, itemsOf, last, groupEdits, base, filled]);
+
+  const clearFill = () => {
+    setFilled({});
+    setBeforeFill(null);
+  };
+
+  const onFilled = useCallback(
+    (result: FillResult, said: string) => {
+      const keys = Object.keys(result.values);
+      const label = (key: string) => fillable.fields.find((f) => f.key === key)?.label ?? key;
+      const problem = result.problems[0];
+      const problemText = problem ? (problem.key ? `${label(problem.key)}: ${problem.problem.charAt(0).toLowerCase()}${problem.problem.slice(1)}` : problem.problem) : '';
+      if (!keys.length) {
+        setStatus(problem ? `Couldn’t fill. ${problemText}` : `Didn’t catch any fields in “${said}”`);
+        return;
+      }
+      setBeforeFill(edits);
+      setEdits({ ...edits, ...result.values });
+      setFilled(Object.fromEntries(keys.map((k) => [k, true as const])));
+      const more = result.problems.length > 1 ? ` (+${result.problems.length - 1} more)` : '';
+      setStatus(`Filled ${keys.length} ${keys.length === 1 ? 'field' : 'fields'}. Check, then Save${problem ? `. ${problemText}${more}` : ''}`);
+    },
+    [fillable, edits],
+  );
+
+  const voice = useVoiceFill({ speech, lang: speechLang, filler, form: fillable, onFilled, onError: setStatus });
 
   const dirty = Object.keys(edits).length + groups.reduce((n, g) => n + groupChanges(base[groupKey(g)] ?? [], groupEdits[groupKey(g)]), 0);
 
@@ -232,6 +279,7 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
     setEdits({});
     setGroupEdits({});
     setChecked(false);
+    clearFill();
     setOffsetMs(0);
     setStatus(`Saved ${added.length} ${added.length === 1 ? 'value' : 'values'}`);
     onSaved?.(added.length, added);
@@ -244,15 +292,39 @@ export function InputForm({ dashboard, store, onSaved, choices = NO_CHOICES, hea
           header={header !== undefined ? header : <TimestampPicker offsetMs={offsetMs} onChange={setOffsetMs} />}
           footer={
             <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
-              <Text style={[styles.status, { color: status?.startsWith('Can’t') ? theme.danger : theme.textSecondary }]}>
-                {status ?? (dirty ? `${dirty} unsaved ${dirty === 1 ? 'change' : 'changes'}` : 'Nothing to save')}
+              {voice.available && <MicButton dictation={voice} label="Fill the form by voice" size={36} />}
+              <Text
+                style={[styles.status, { color: status?.startsWith('Can’t') || status?.startsWith('Couldn’t') ? theme.danger : theme.textSecondary }]}
+                accessibilityLiveRegion="polite"
+              >
+                {voice.listening
+                  ? voice.heard
+                    ? `“${voice.heard}”`
+                    : 'Listening… say each field’s name and its value, then tap to stop'
+                  : voice.filling
+                    ? 'Filling…'
+                    : (status ?? (dirty ? `${dirty} unsaved ${dirty === 1 ? 'change' : 'changes'}` : 'Nothing to save'))}
               </Text>
-              {dirty > 0 && (
+              {beforeFill && (
+                <Pressable
+                  onPress={() => {
+                    setEdits(beforeFill);
+                    clearFill();
+                    setStatus(null);
+                  }}
+                  style={styles.secondary}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: theme.textSecondary, fontWeight: '500' }}>Undo</Text>
+                </Pressable>
+              )}
+              {dirty > 0 && !beforeFill && (
                 <Pressable
                   onPress={() => {
                     setEdits({});
                     setGroupEdits({});
                     setChecked(false);
+                    clearFill();
                     setStatus(null);
                   }}
                   style={styles.secondary}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fillForm, fillPrompt, fillSchema, parseFillAnswer, readFill, ruleFill } from '../src/core';
+import { fillForm, fillHints, fillPrompt, fillSchema, modelFiller, parseFillAnswer, readFill, ruleFill, ruleFiller } from '../src/core';
 import { DAILY, FILL_CASES, HABITS, WORKOUT } from './fixtures/fillCases';
 
 describe('fillForm', () => {
@@ -90,6 +90,45 @@ describe('ruleFill', () => {
 
   it('uses the first mention of a field', () => {
     expect(ruleFill(fillForm(DAILY), 'mood 3 no wait mood 4').values.mood).toBe(3);
+  });
+});
+
+describe('fillers', () => {
+  const daily = fillForm(DAILY);
+
+  it('ruleFiller is ruleFill behind the filler interface', async () => {
+    expect(await ruleFiller(daily, 'weight 72.5, mood 4')).toEqual(ruleFill(daily, 'weight 72.5, mood 4'));
+  });
+
+  it('modelFiller asks with the prompt and schema, and reads the reply with readFill', async () => {
+    const asked: unknown[][] = [];
+    const filler = modelFiller(async (...args) => {
+      asked.push(args);
+      return '```json\n{"mood": "four", "sleep": "lots"}\n```';
+    });
+    const r = await filler(daily, 'in a good mood');
+    expect(asked[0][1]).toContain('The user said: "in a good mood"');
+    expect(asked[0][2]).toEqual(fillSchema(daily));
+    expect(r.values).toEqual({ mood: 4 });
+    expect(r.problems.map((p) => p.key)).toEqual(['sleep']);
+  });
+
+  it('modelFiller falls back to another filler for what the model left out, or when it fails', async () => {
+    const partial = modelFiller(async () => ({ mood: 2 }), ruleFiller);
+    expect((await partial(daily, 'weight 70, mood 5')).values).toEqual({ weight: 70, mood: 2 });
+
+    const broken = modelFiller(async () => {
+      throw new Error('no model');
+    }, ruleFiller);
+    expect((await broken(daily, 'weight 70')).values).toEqual({ weight: 70 });
+    expect((await modelFiller(async () => 'no idea', ruleFiller)(daily, 'mood 3')).values).toEqual({ mood: 3 });
+
+    const alone = await modelFiller(async () => 'no idea')(daily, 'mood 3');
+    expect(alone).toEqual({ values: {}, problems: [{ key: '', problem: 'The model couldn’t fill the form' }] });
+  });
+
+  it('gives the recognizer field names, units and choices as hints', () => {
+    expect(fillHints(daily)).toEqual(['Weight', 'kg', 'Sleep', 'h', 'Mood', 'Energy', 'Drained', 'OK', 'Buzzing', 'Notes']);
   });
 });
 

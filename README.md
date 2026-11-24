@@ -148,6 +148,30 @@ const speech: SpeechRecognizer = {
 forms by other means. The native recognizer is shared, so a real adapter should also wait for the previous session's
 `end` before starting the next one; otherwise that late event ends the new session too.
 
+### Filling the whole form by voice
+
+With a recognizer, the form also gets a microphone beside Save. Say several values in one go ("weight seventy two
+point five, slept seven hours, mood four, went for a swim"), tap again to stop, and the form fills what it understood.
+Filled inputs are outlined and marked "From voice" until edited; nothing is recorded until Save, and Undo puts the form
+back as it was before the fill. Listening is `continuous`, so pauses don't cut it off: an adapter should pass that on
+(expo-speech-recognition takes `continuous: true`) and deliver the whole transcript as one final `onText` when it
+stops.
+
+What was said goes to a `FormFiller`, `(form, said) => Promise<FillResult>`. The default, `ruleFiller`, needs no model:
+a value is what follows a field's name, and fields not named are found by unit ("72.5 kilos") or by a choice only one
+field has. To use a model, wrap whatever generates text in `modelFiller`; it prompts with `fillPrompt`, passes
+`fillSchema` for guided generation, reads the reply with `readFill` (so a model can only enter what typing could), and
+with a fallback fills what the model left out:
+
+```tsx
+import { modelFiller, ruleFiller } from '@modelform/react-native';
+
+const filler = modelFiller((instructions, prompt, schema) => myModel.generate({ instructions, prompt, schema }), ruleFiller);
+<InputForm dashboard={form} store={store} speech={speech} filler={filler} />;
+```
+
+`filler={null}` turns whole-form filling off and keeps per-field dictation. Groups' fields and counters aren't filled.
+
 ## Bundled dashboards
 
 `modelform dashboards [dir] [--watch]` writes an `index.ts` that imports every `.json` file in a folder, so

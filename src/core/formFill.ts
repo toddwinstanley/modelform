@@ -294,3 +294,55 @@ export function ruleFill(form: FillForm, said: string): FillResult {
   }
   return readFill(form, answer);
 }
+
+/**
+ * Fills a form from what was said. The rule-based filler is the default; an on-device model can
+ * be dropped in later (see modelFiller) without changing the form. Whatever a filler returns
+ * should come from readFill, so it can only hold values typing could have entered.
+ */
+export type FormFiller = (form: FillForm, said: string) => Promise<FillResult>;
+
+/** The filler that needs no model: ruleFill. Works offline on every device. */
+export const ruleFiller: FormFiller = async (form, said) => ruleFill(form, said);
+
+/**
+ * Generates a reply for a model filler: `schema` is fillSchema(form), for models with guided
+ * generation; others can ignore it (the prompt describes the fields too). Resolve with the
+ * reply as text, or as an object already parsed.
+ */
+export type FillGenerate = (instructions: string, prompt: string, schema: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * A filler backed by a model: asks it with fillPrompt and reads the reply with readFill. With
+ * `fallback`, fields the model left out are filled by that filler (ruleFiller, say), and a
+ * model that fails or gives no usable answer falls back entirely.
+ */
+export function modelFiller(generate: FillGenerate, fallback?: FormFiller): FormFiller {
+  return async (form, said) => {
+    let result: FillResult | null = null;
+    try {
+      const { instructions, prompt } = fillPrompt(form, said);
+      result = readFill(form, await generate(instructions, prompt, fillSchema(form)));
+      if (result.problems.some((p) => p.key === '')) result = null;
+    } catch {
+      result = null;
+    }
+    if (!fallback) return result ?? { values: {}, problems: [{ key: '', problem: 'The model couldn’t fill the form' }] };
+    const rules = await fallback(form, said);
+    if (!result) return rules;
+    const values = { ...rules.values, ...result.values };
+    const problems = [...result.problems, ...rules.problems.filter((p) => !(p.key in values))];
+    return { values, problems };
+  };
+}
+
+/** Words a recognizer should expect for the whole form: field names, units and choice labels. */
+export function fillHints(form: FillForm): string[] {
+  const out = new Set<string>();
+  for (const f of form.fields) {
+    out.add(f.label);
+    if (f.unit) out.add(f.unit);
+    for (const c of f.choices ?? []) out.add(c);
+  }
+  return [...out];
+}
