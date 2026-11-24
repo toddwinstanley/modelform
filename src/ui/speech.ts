@@ -9,6 +9,11 @@ export interface DictationOptions {
   lang?: string;
   /** Words likely to be said, such as choice labels, for recognizers that take hints. */
   hints?: string[];
+  /**
+   * Keep listening through pauses until stopped, for a long phrase (filling a whole form).
+   * `onText` is still called with `final` only once, when listening stops.
+   */
+  continuous?: boolean;
   /** What's been heard so far. Called with `final` once, when the phrase is done. */
   onText(text: string, final: boolean): void;
   /** Something went wrong, in words to show the user. Not called when stopped or aborted. */
@@ -68,7 +73,7 @@ export function webSpeechRecognizer(): SpeechRecognizer | null {
       const r = new Recognition();
       if (o.lang) r.lang = o.lang;
       r.interimResults = true;
-      r.continuous = false;
+      r.continuous = !!o.continuous;
       r.maxAlternatives = 1;
       let delivered = false;
       let aborted = false;
@@ -81,6 +86,8 @@ export function webSpeechRecognizer(): SpeechRecognizer | null {
           if (!e.results[i].isFinal) final = false;
         }
         lastText = text.trim();
+        // Continuous: phrases finish one by one; the whole is final only when listening ends.
+        if (o.continuous) final = false;
         if (final) delivered = true;
         o.onText(lastText, final);
       };

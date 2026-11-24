@@ -7,6 +7,8 @@ export interface InputFormState {
   value(metric: string): InputValue;
   setValue(metric: string, v: InputValue): void;
   isDirty(metric: string): boolean;
+  /** Whether the input was just filled by voice and not yet edited, saved or discarded: shown highlighted for review. */
+  filled?(metric: string): boolean;
   store: EntryStore;
   /** Runtime choice lists for input-select panels with `choicesFrom`. */
   choices: Record<string, InputChoice[]>;

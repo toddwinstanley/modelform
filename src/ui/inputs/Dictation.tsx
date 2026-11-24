@@ -7,8 +7,21 @@ import type { DictationSession } from '../speech';
 import { useDashTheme } from '../theme';
 import { useInputForm } from './formContext';
 
-/** One field listens at a time: starting another drops the first. */
+/** One microphone listens at a time (a field's, or the whole form's): starting another drops the first. */
 let listening: DictationSession | null = null;
+
+/** Stops whatever is listening, before starting something new. */
+export function stopListening() {
+  listening?.abort();
+  listening = null;
+}
+
+/** Marks `session` as the one listening, or, with `done`, as no longer listening. */
+export function claimListening(session: DictationSession | null, done = false) {
+  if (done) {
+    if (listening === session) listening = null;
+  } else listening = session;
+}
 
 /** How long a "Heard …" message stays once listening has stopped. */
 const HINT_MS = 4000;
@@ -57,14 +70,14 @@ export function useDictation(panel: InputPanel, value: InputValue, onChange: (v:
       session.current.stop();
       return;
     }
-    listening?.abort();
+    stopListening();
     setHint(null);
     let mine: DictationSession | null = null;
     let ended = false;
     const end = () => {
       ended = true;
       if (session.current === mine) session.current = null;
-      if (listening === mine) listening = null;
+      claimListening(mine, true);
       setOn(false);
     };
     try {
@@ -89,7 +102,7 @@ export function useDictation(panel: InputPanel, value: InputValue, onChange: (v:
     // onEnd may already have run (a recognizer that fails at once).
     if (!ended) {
       session.current = mine;
-      listening = mine;
+      claimListening(mine);
       setOn(true);
     }
   };
@@ -98,7 +111,7 @@ export function useDictation(panel: InputPanel, value: InputValue, onChange: (v:
 }
 
 /** The microphone button beside an input. Filled while listening; tap again to stop. */
-export function MicButton({ dictation, title, size = 32 }: { dictation: Dictation; title?: string; size?: number }) {
+export function MicButton({ dictation, title, label, size = 32 }: { dictation: Pick<Dictation, 'available' | 'listening' | 'toggle'>; title?: string; label?: string; size?: number }) {
   const theme = useDashTheme();
   if (!dictation.available) return null;
   const on = dictation.listening;
@@ -106,7 +119,7 @@ export function MicButton({ dictation, title, size = 32 }: { dictation: Dictatio
     <Pressable
       onPress={dictation.toggle}
       accessibilityRole="button"
-      accessibilityLabel={on ? 'Stop dictating' : title ? `Dictate ${title}` : 'Dictate'}
+      accessibilityLabel={on ? 'Stop dictating' : (label ?? (title ? `Dictate ${title}` : 'Dictate'))}
       accessibilityState={{ selected: on }}
       hitSlop={6}
       style={({ pressed }) => [
