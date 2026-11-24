@@ -21,7 +21,8 @@ import {
   type InputValue,
   type NewEntry,
 } from '../../core/inputs';
-import { fillForm, ruleFiller, type FillResult, type FormFiller } from '../../core/formFill';
+import { fillForm, type FillResult, type FormFiller } from '../../core/formFill';
+import { ruleFiller } from '../../core/ruleFill';
 import type { EntryStore } from '../../core/local';
 import type { Dashboard } from '../../core/schema';
 import { DashboardProvider } from '../context';

@@ -13,6 +13,7 @@ export * from './grafana';
 export * from './inputs';
 export * from './speech';
 export * from './formFill';
+export * from './ruleFill';
 export * from './local';
 export * from './gazetteer';
 export * from './links';

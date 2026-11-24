@@ -157,9 +157,13 @@ back as it was before the fill. Listening is `continuous`, so pauses don't cut i
 (expo-speech-recognition takes `continuous: true`) and deliver the whole transcript as one final `onText` when it
 stops.
 
-What was said goes to a `FormFiller`, `(form, said) => Promise<FillResult>`. The default, `ruleFiller`, needs no model:
-a value is what follows a field's name, and fields not named are found by unit ("72.5 kilos") or by a choice only one
-field has. To use a model, wrap whatever generates text in `modelFiller`; it prompts with `fillPrompt`, passes
+What was said goes to a `FormFiller`, `(form, said) => Promise<FillResult>`. The default, `ruleFiller`, needs no model.
+A named field takes the value said next to it, and it finds names in the forms people say them in ("slept", "weighed",
+"meditation") plus a few everyday synonyms ("drink" for Alcohol, "jog" for Run, "feeling" for Mood). That covers
+"slept badly, maybe five hours", "didn't drink", "no meditation", "mood pretty low" and "in a good mood". If a field
+is named twice, the last value wins ("mood 3, no wait, 4"). Fields not named are found by what only they could take: a
+number with their unit ("72.5 kilos", "5k"), a time when only one field takes times ("for an hour and a half" fills a
+minutes field with 90), or a choice only one field has ("went for a jog"). It leaves a field empty rather than guess. To use a model, wrap whatever generates text in `modelFiller`; it prompts with `fillPrompt`, passes
 `fillSchema` for guided generation, reads the reply with `readFill` (so a model can only enter what typing could), and
 with a fallback fills what the model left out:
 

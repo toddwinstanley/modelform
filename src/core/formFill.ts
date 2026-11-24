@@ -1,6 +1,6 @@
 import { plainInputPanels, type InputChoice, type InputPanel, type InputValue } from './inputs';
 import type { Dashboard } from './schema';
-import { matchChoices, spokenValue } from './speech';
+import { spokenValue } from './speech';
 
 /**
  * Filling a whole form from one thing said ("weight seventy two point five, slept seven hours,
@@ -34,7 +34,7 @@ export interface FillForm {
   choices: Record<string, InputChoice[]>;
 }
 
-const choicesOf = (p: InputPanel, runtime: Record<string, InputChoice[]>) =>
+export const choicesOf = (p: InputPanel, runtime: Record<string, InputChoice[]>) =>
   (p.options.choicesFrom ? runtime[p.options.choicesFrom] : p.options.choices) ?? [];
 
 /** The fields a filler can fill: the form's inputs outside groups, except counters. */
@@ -214,96 +214,12 @@ export function readFill(form: FillForm, answer: unknown): FillResult {
   return result;
 }
 
-const UNIT_WORDS: Record<string, string[]> = {
-  kg: ['kg', 'kgs', 'kilo', 'kilos', 'kilogram', 'kilograms'],
-  lb: ['lb', 'lbs', 'pound', 'pounds'],
-  h: ['h', 'hr', 'hrs', 'hour', 'hours'],
-  min: ['min', 'mins', 'minute', 'minutes'],
-  s: ['s', 'sec', 'secs', 'second', 'seconds'],
-  km: ['km', 'kms', 'kilometer', 'kilometers', 'kilometre', 'kilometres', 'k'],
-  mi: ['mi', 'mile', 'miles'],
-  m: ['m', 'meter', 'meters', 'metre', 'metres'],
-};
-
-const NUMBER_WORD =
-  '(?:-?\\d+(?:[.,]\\d+)?|zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|point|and|a|half|quarter|minus)';
-
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** Words that name a field: its label, and its metric with dashes as spaces. */
-function namesOf(f: FillField): string[] {
-  const names = new Set([f.label.toLowerCase(), f.key.toLowerCase().replace(/[-_]+/g, ' ')]);
-  return [...names].filter((n) => n.trim().length > 1);
-}
-
-/** Filler words between a field's name and its value: "weight is 72", "notes: felt good". */
-const LEAD = /^[\s,:;.-]*(?:(?:is|was|were|of|at|about|around|to|=)\b[\s,:;.-]*)*/i;
-
-/**
- * Fills a form without a model: each field's value is what follows its name ("weight 72.5,
- * sleep seven hours, notes felt good"), and fields not named are found by what they take: a
- * number with the field's unit ("72.5 kilos"), or a choice only that field has ("went for a swim").
- * Works offline on every device, but people have to say the field names.
- */
-export function ruleFill(form: FillForm, said: string): FillResult {
-  const lower = said.toLowerCase();
-  const hits: { key: string; at: number; end: number }[] = [];
-  for (const f of form.fields)
-    for (const name of namesOf(f)) {
-      const re = new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, 'gu');
-      for (const m of lower.matchAll(re)) {
-        const at = m.index!;
-        const end = at + m[0].length;
-        if (!hits.some((h) => at < h.end && end > h.at)) hits.push({ key: f.key, at, end });
-      }
-    }
-  hits.sort((a, b) => a.at - b.at);
-
-  // What follows each name, up to the next name: the first mention of a field wins.
-  const segments: Record<string, string> = {};
-  const used: [number, number][] = [];
-  hits.forEach((h, i) => {
-    const stop = i + 1 < hits.length ? hits[i + 1].at : said.length;
-    if (h.key in segments) return;
-    segments[h.key] = said.slice(h.end, stop).replace(LEAD, '').replace(/[\s,;.]+$/, '');
-    used.push([h.at, stop]);
-  });
-
-  const answer: Record<string, unknown> = {};
-  for (const f of form.fields) if (segments[f.key]) answer[f.key] = segments[f.key];
-
-  // Fields not named: numbers by unit, choices by label, in what no named field took.
-  const rest = used.reduceRight((text, [a, b]) => text.slice(0, a) + ' '.repeat(b - a) + text.slice(b), said);
-  for (const f of form.fields) {
-    if (f.key in answer) continue;
-    if (f.type === 'number' && f.unit) {
-      const words = UNIT_WORDS[f.unit.toLowerCase()] ?? [f.unit.toLowerCase()];
-      // Only number words right before the unit: "72.5 kilos", "seven and a half hours".
-      const unitRe = new RegExp(`(?<![\\p{L}\\p{N}])((?:${NUMBER_WORD}[\\s-]+)+)(?:${words.map(escape).join('|')})(?![\\p{L}\\p{N}])`, 'iu');
-      const m = unitRe.exec(rest);
-      if (m && m[1].trim()) answer[f.key] = m[1];
-    } else if ((f.type === 'choice' || f.type === 'choices') && f.choices) {
-      const options = f.choices.map((label) => ({ label, value: label }));
-      const hits = matchChoices(rest, options);
-      // Only when no other unfilled choice field takes the same words.
-      const shared = form.fields.some(
-        (g) => g !== f && !(g.key in answer) && (g.type === 'choice' || g.type === 'choices') && matchChoices(rest, (g.choices ?? []).map((l) => ({ label: l, value: l }))).length,
-      );
-      if (hits.length && !shared) answer[f.key] = f.type === 'choices' ? hits : hits[0];
-    }
-  }
-  return readFill(form, answer);
-}
-
 /**
  * Fills a form from what was said. The rule-based filler is the default; an on-device model can
  * be dropped in later (see modelFiller) without changing the form. Whatever a filler returns
  * should come from readFill, so it can only hold values typing could have entered.
  */
 export type FormFiller = (form: FillForm, said: string) => Promise<FillResult>;
-
-/** The filler that needs no model: ruleFill. Works offline on every device. */
-export const ruleFiller: FormFiller = async (form, said) => ruleFill(form, said);
 
 /**
  * Generates a reply for a model filler: `schema` is fillSchema(form), for models with guided

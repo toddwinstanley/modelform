@@ -67,6 +67,11 @@ describe('parseSpokenDuration', () => {
     ['an hour and ten minutes', 4200],
     ['a minute and a half', 90],
     ['one minute thirty', 90],
+    ['half an hour', 1800],
+    ['a quarter of an hour', 900],
+    ['three quarters of an hour', 2700],
+    ['half a minute', 30],
+    ['an hour and a half', 5400],
   ])('%s → %s', (said, s) => expect(parseSpokenDuration(said)).toBe(s));
 
   it('is null without a time', () => expect(parseSpokenDuration('fast')).toBeNull());
