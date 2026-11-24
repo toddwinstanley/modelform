@@ -152,6 +152,10 @@ export function parseSpokenDuration(text: string): number | null {
   }
   const lower = text
     .toLowerCase()
+    // "half an hour" → "0.5 hour", "a quarter of an hour" → "0.25 hour", "three quarters of an hour"
+    .replace(/\b(?:(?:a|one|three) )?(half|quarters?)(?: of)? an? (hour|minute)\b/g, (m, part: string, unit: string) =>
+      `${part === 'half' ? 0.5 : m.startsWith('three') ? 0.75 : 0.25} ${unit}`,
+    )
     .replace(/\ban hour\b/g, 'one hour')
     .replace(/\ba minute\b/g, 'one minute')
     // "a minute and a half" → "one and a half minute"

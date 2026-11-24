@@ -76,11 +76,12 @@ export const FILL_CASES: FillCase[] = [
   { form: WORKOUT, said: 'Went for a swim, 40 minutes', expected: { activity: 'swim', 'workout-minutes': 40 }, rule: true },
   { form: WORKOUT, said: 'ten k run in fifty five minutes', expected: { activity: 'run', distance: 10, 'workout-minutes': 55 }, rule: true },
 
-  // Natural phrasing: needs a model.
-  { form: DAILY, said: 'I slept badly, maybe five hours, feeling pretty low today', expected: { sleep: 5, mood: 2 } },
+  // Natural phrasing. The rule-based filler gets some fully, and the rest in part (never wrongly);
+  // what it leaves takes a guess (effort from "hard", energy from "wired") and is left for a model.
+  { form: DAILY, said: 'I slept badly, maybe five hours, feeling pretty low today', expected: { sleep: 5, mood: 2 }, rule: true },
   { form: DAILY, said: "Feeling great, totally wired, weighed in at seventy one", expected: { weight: 71, energy: 10, mood: 5 } },
   { form: WORKOUT, said: 'Did a hard bike ride for an hour and a half', expected: { activity: 'ride', 'workout-minutes': 90, effort: 5 } },
   { form: WORKOUT, said: 'easy jog, 5k, about half an hour', expected: { activity: 'run', distance: 5, 'workout-minutes': 30, effort: 1 } },
   { form: HABITS, said: "I didn't drink, had lunch and dinner, and I'm grateful for the sunshine", expected: { alcohol: false, meals: ['l', 'd'], gratitude: 'the sunshine' } },
-  { form: HABITS, said: 'No meditation today. Phone said three and a half hours.', expected: { meditated: false, screen: 12600 } },
+  { form: HABITS, said: 'No meditation today. Phone said three and a half hours.', expected: { meditated: false, screen: 12600 }, rule: true },
 ];
